@@ -1,0 +1,17 @@
+export const nav = {
+  home: "Home",
+  customers: "Customers",
+  khata: "Snap khata",
+  reminders: "Reminders",
+  calls: "Calls",
+  ask: "Ask your khata",
+  askShort: "Ask",
+  report: "Today's report",
+  reportShort: "Report",
+  graph: "Knowledge graph",
+  graphShort: "Graph",
+  settings: "Settings",
+  more: "More",
+  openMenu: "Open menu",
+  website: "About Udhaar Voice",
+};

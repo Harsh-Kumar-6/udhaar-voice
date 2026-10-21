@@ -1,0 +1,283 @@
+"use client";
+
+import { Camera, CheckCircle2, FileImage, Loader2, PhoneCall, RotateCcw } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { Money, PageHeader } from "@/components/app/bits";
+import { SampleKhataPage } from "@/components/app/sample-khata";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { api } from "@/lib/api";
+import type { KhataExtraction, KhataRow } from "@/lib/api/contract";
+import { useApiMutation, useCustomers } from "@/lib/api/hooks";
+import { formatINR, normalizeIndianMobile } from "@/lib/domain/rules";
+import { useT } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
+
+type Stage =
+  | { kind: "start" }
+  | { kind: "reading"; source: "sample" | "upload"; imageUrl?: string }
+  | { kind: "review"; source: "sample" | "upload"; imageUrl?: string; scan: KhataExtraction }
+  | { kind: "saved"; entries: number; newCustomers: number; withoutPhone: number };
+
+const LOW = 0.8;
+
+export function KhataScreen() {
+  const t = useT().khata;
+  const [stage, setStage] = useState<Stage>({ kind: "start" });
+  const fileInput = useRef<HTMLInputElement>(null);
+  const imageUrl = stage.kind === "reading" || stage.kind === "review" ? stage.imageUrl : undefined;
+
+  // Free the photo preview when it is no longer shown.
+  useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
+
+  const read = async (source: "sample" | "upload", file?: File) => {
+    const url = file ? URL.createObjectURL(file) : undefined;
+    setStage({ kind: "reading", source, imageUrl: url });
+    const scan = await api.extractKhata({ source, fileName: file?.name });
+    setStage({ kind: "review", source, imageUrl: url, scan });
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title={t.title} description={t.description} />
+
+      {stage.kind === "start" ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardContent className="space-y-5">
+              <div className="grid gap-3">
+                <Button size="lg" className="h-14 text-base" onClick={() => fileInput.current?.click()}>
+                  <Camera className="size-5" /> {t.start.takePhoto}
+                </Button>
+                <input
+                  ref={fileInput}
+                  id="khata-photo"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void read("upload", file);
+                    e.target.value = "";
+                  }}
+                />
+                <Button size="lg" variant="outline" className="h-14 text-base" onClick={() => void read("sample")}>
+                  <FileImage className="size-5" /> {t.start.sample}
+                </Button>
+              </div>
+              <ul className="space-y-1.5 text-sm text-muted-foreground">
+                {t.start.tips.map((tip) => (
+                  <li key={tip} className="flex gap-2">
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" /> {tip}
+                  </li>
+                ))}
+              </ul>
+              <p className="rounded-lg bg-promised-soft px-3 py-2 text-xs text-promised">{t.start.prototypeNote}</p>
+            </CardContent>
+          </Card>
+          <figure className="space-y-2">
+            <SampleKhataPage />
+            <figcaption className="text-center text-xs text-muted-foreground">{t.sampleCaption}</figcaption>
+          </figure>
+        </div>
+      ) : null}
+
+      {stage.kind === "reading" ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <PagePreview imageUrl={stage.imageUrl} scanning />
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Loader2 className="size-5 animate-spin text-primary" /> {t.reading.title}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ol className="space-y-3">
+                {t.reading.steps.map((s, i) => (
+                  <li key={s} className="flex items-center gap-3 text-sm animate-in fade-in-0 fill-mode-both" style={{ animationDelay: `${i * 600}ms` }}>
+                    <span className="grid size-6 place-items-center rounded-full bg-accent font-mono text-xs">{i + 1}</span> {s}
+                  </li>
+                ))}
+              </ol>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {stage.kind === "review" ? (
+        <Review
+          scan={stage.scan}
+          imageUrl={stage.imageUrl}
+          onCancel={() => setStage({ kind: "start" })}
+          onSaved={(r) => setStage({ kind: "saved", ...r })}
+        />
+      ) : null}
+
+      {stage.kind === "saved" ? (
+        <Card className="mx-auto max-w-lg text-center">
+          <CardContent className="flex flex-col items-center gap-4 py-6">
+            <CheckCircle2 className="size-12 text-paid" />
+            <div className="space-y-1">
+              <h2 className="text-xl font-bold">{t.saved.title}</h2>
+              <p className="text-muted-foreground">{t.saved.body(stage.entries, stage.newCustomers)}</p>
+              {stage.withoutPhone ? <p className="text-sm text-promised">{t.saved.noPhone}</p> : null}
+            </div>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button size="lg" variant="outline" onClick={() => setStage({ kind: "start" })}>
+                <RotateCcw /> {t.saved.another}
+              </Button>
+              <Button asChild size="lg">
+                <Link href="/app/reminders">
+                  <PhoneCall /> {t.saved.remind}
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+function PagePreview({ imageUrl, scanning = false }: { imageUrl?: string; scanning?: boolean }) {
+  if (!imageUrl) return <SampleKhataPage scanning={scanning} />;
+  return (
+    <div className="relative overflow-hidden rounded-lg border">
+      {/* A local object URL from the user's own photo; next/image can't optimise it. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={imageUrl} alt="Your khata photo" className="max-h-[32rem] w-full object-contain" />
+      {scanning ? <div className="pointer-events-none absolute inset-x-0 top-0 h-16 animate-[scan_1.6s_ease-in-out_infinite] bg-gradient-to-b from-transparent via-primary/25 to-transparent" /> : null}
+    </div>
+  );
+}
+
+function Review({
+  scan,
+  imageUrl,
+  onCancel,
+  onSaved,
+}: {
+  scan: KhataExtraction;
+  imageUrl?: string;
+  onCancel: () => void;
+  onSaved: (r: { entries: number; newCustomers: number; withoutPhone: number }) => void;
+}) {
+  const t = useT().khata.review;
+  const customers = useCustomers();
+  const save = useApiMutation(api.saveKhata);
+  const [rows, setRows] = useState<KhataRow[]>(scan.rows);
+  const [phoneErrors, setPhoneErrors] = useState<Record<string, boolean>>({});
+
+  const nameOf = (id?: string) => customers.data?.find((s) => s.customer.id === id)?.customer.name;
+  const update = (id: string, patch: Partial<KhataRow>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const included = rows.filter((r) => r.include);
+  const fresh = included.filter((r) => !r.matchCustomerId).length;
+  const total = included.reduce((s, r) => s + r.amount.value, 0);
+
+  const submit = async () => {
+    const errors: Record<string, boolean> = {};
+    for (const r of included) if (!r.matchCustomerId && r.phone && !normalizeIndianMobile(r.phone)) errors[r.id] = true;
+    setPhoneErrors(errors);
+    if (Object.keys(errors).length) return toast.error(t.invalidPhone);
+    const result = await save.mutateAsync(rows);
+    onSaved({ ...result, withoutPhone: included.filter((r) => !r.matchCustomerId && !r.phone).length });
+  };
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+      <PagePreview imageUrl={imageUrl} />
+      <Card>
+        <CardHeader>
+          <CardTitle>{t.title}</CardTitle>
+          <CardDescription>{t.description}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ul className="space-y-3">
+            {rows.map((r) => (
+              <li key={r.id} className={cn("space-y-3 rounded-lg border p-3", !r.include && "opacity-50")}>
+                <div className="flex items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <Checkbox id={`include-${r.id}`} checked={r.include} onCheckedChange={(v) => update(r.id, { include: v === true })} />
+                    {r.nameNative ? <span lang="bn">{r.nameNative}</span> : null}
+                  </label>
+                  <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold", r.matchCustomerId ? "bg-paid-soft text-paid" : "bg-callback-soft text-callback")}>
+                    {r.matchCustomerId ? t.matches(nameOf(r.matchCustomerId) ?? r.name.value) : t.newCustomer}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1.4fr_0.8fr_1fr]">
+                  <Field label={t.columns.name} confidence={r.name.confidence} className="col-span-2 sm:col-span-1">
+                    <Input id={`name-${r.id}`} value={r.name.value} disabled={!!r.matchCustomerId} onChange={(e) => update(r.id, { name: { value: e.target.value, confidence: 1 } })} />
+                  </Field>
+                  <Field label={t.columns.amount} confidence={r.amount.confidence}>
+                    <Input
+                      id={`amount-${r.id}`}
+                      inputMode="numeric"
+                      value={String(r.amount.value)}
+                      onChange={(e) => update(r.id, { amount: { value: Math.max(0, Math.round(Number(e.target.value) || 0)), confidence: 1 } })}
+                    />
+                  </Field>
+                  <Field label={t.columns.date} confidence={r.date.confidence}>
+                    <Input id={`date-${r.id}`} type="date" value={r.date.value} onChange={(e) => update(r.id, { date: { value: e.target.value, confidence: 1 } })} />
+                  </Field>
+                  <Field label={t.columns.items} confidence={r.items.confidence} className="col-span-2 sm:col-span-3">
+                    <Input id={`items-${r.id}`} value={r.items.value} onChange={(e) => update(r.id, { items: { value: e.target.value, confidence: 1 } })} />
+                  </Field>
+                  {!r.matchCustomerId ? (
+                    <div className="col-span-2 space-y-1 sm:col-span-3">
+                      <Input
+                        id={`phone-${r.id}`}
+                        inputMode="tel"
+                        placeholder={t.phonePlaceholder}
+                        value={r.phone ?? ""}
+                        aria-invalid={phoneErrors[r.id] || undefined}
+                        onChange={(e) => update(r.id, { phone: e.target.value })}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-medium">{t.summary(included.length, formatINR(total), fresh)}</p>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="lg" onClick={onCancel}>
+                {t.startOver}
+              </Button>
+              <Button size="lg" onClick={submit} disabled={included.length === 0 || save.isPending}>
+                {t.save} · <Money amount={total} />
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function Field({ label, confidence, className, children }: { label: string; confidence: number; className?: string; children: React.ReactNode }) {
+  const t = useT().khata.review;
+  const low = confidence < LOW;
+  const box = (
+    <div className={cn("space-y-1", className)}>
+      <span className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+        {label}
+        {low ? <span className="size-1.5 rounded-full bg-promised" aria-hidden /> : null}
+      </span>
+      <div className={cn(low && "rounded-md ring-2 ring-promised/70")}>{children}</div>
+    </div>
+  );
+  if (!low) return box;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{box}</TooltipTrigger>
+      <TooltipContent>{t.lowConfidence(Math.round(confidence * 100))}</TooltipContent>
+    </Tooltip>
+  );
+}

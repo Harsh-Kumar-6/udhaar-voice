@@ -1,0 +1,6 @@
+# Safety net for anything created at the repo root (web/ has its own .gitignore)
+node_modules/
+.env*
+.vercel
+.DS_Store
+*.log

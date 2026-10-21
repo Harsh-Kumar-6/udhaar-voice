@@ -1,0 +1,32 @@
+export const khata = {
+  title: "Snap khata",
+  description: "Photograph a page of your credit book. Names, amounts and dates are read for you; you check the ones it isn't sure about.",
+  start: {
+    takePhoto: "Take or upload a photo",
+    sample: "Use the sample page",
+    tips: ["Lay the page flat in good light.", "Fit the whole page in the frame.", "One page at a time."],
+    prototypeNote: "Prototype: every photo returns the same sample result. The real app reads your handwriting with a vision model.",
+  },
+  reading: { title: "Reading the page…", steps: ["Finding the lines", "Reading names", "Reading amounts and dates"] },
+  review: {
+    title: "Check what was read",
+    description: "Fields with a coloured outline were hard to read. Fix them, add phone numbers for new customers, then save.",
+    columns: { include: "Save", name: "Name", amount: "₹", date: "Date", items: "Items", customer: "Customer" },
+    matches: (name: string) => `Adds to ${name}`,
+    newCustomer: "New customer",
+    phonePlaceholder: "Mobile number (optional)",
+    lowConfidence: (pct: number) => `Hard to read (${pct}% sure). Please check.`,
+    summary: (rows: number, total: string, fresh: number) => `${rows} ${rows === 1 ? "entry" : "entries"} · ${total}${fresh ? ` · ${fresh} new ${fresh === 1 ? "customer" : "customers"}` : ""}`,
+    save: "Save to khata",
+    startOver: "Start over",
+    invalidPhone: "That doesn't look like an Indian mobile number.",
+  },
+  saved: {
+    title: "Saved to your khata",
+    body: (entries: number, fresh: number) => `${entries} ${entries === 1 ? "entry" : "entries"} added${fresh ? `, ${fresh} new ${fresh === 1 ? "customer" : "customers"}` : ""}.`,
+    another: "Snap another page",
+    remind: "Schedule reminders",
+    noPhone: "New customers without a phone number can't be called until you add one.",
+  },
+  sampleCaption: "Sample khata page",
+};

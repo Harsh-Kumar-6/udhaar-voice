@@ -1,0 +1,23 @@
+export const ask = {
+  title: "Ask your khata",
+  description: "Ask in Bengali, Hindi or English. In the real app you talk to it in a browser call; here you can type or tap a question.",
+  placeholder: "Ask anything, e.g. Kaun is hafte dega?",
+  send: "Ask",
+  voice: "Speak",
+  voiceNote: "Voice runs on Bolna's Web Call SDK and arrives with the real engine.",
+  suggestions: [
+    "Kaun is hafte dega?",
+    "এই সপ্তাহে কে দেবে?",
+    "Ramesh ka kitna baaki hai?",
+    "Any open disputes?",
+    "Who broke a promise?",
+    "What did customers ask for?",
+    "আজ কত টাকা এল?",
+    "Call Bapi tomorrow",
+  ],
+  you: "You",
+  assistant: "Asha",
+  calledTool: "Called",
+  intro: "Namaskar! I know your whole khata: dues, promises, disputes and what customers said on calls. What would you like to know?",
+  thinking: "Looking it up…",
+};

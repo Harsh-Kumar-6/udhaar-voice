@@ -1,0 +1,29 @@
+export const report = {
+  title: "Today's report",
+  description: (time: string) => `What came in, what was promised, and what needs you. Asha calls you with this every evening at ${time}.`,
+  stats: {
+    collected: "Collected today",
+    promised: "Promised today",
+    calls: "Calls made",
+    callsHint: (answered: number) => `${answered} answered`,
+    disputes: "Open disputes",
+  },
+  sections: {
+    payments: "Payments today",
+    promises: "Promises made today",
+    dueTomorrow: "Due tomorrow",
+    disputes: "Disputes to check",
+    products: "Customers asked for",
+  },
+  none: "Nothing yet.",
+  spoken: {
+    title: "The evening call",
+    description: "This is what Asha says when she calls you. You can ask follow-up questions on the call.",
+    send: "Send report call now",
+    sending: "Calling you…",
+    preview: "Preview with browser voice",
+    stopPreview: "Stop preview",
+    previewNote: "The preview uses your browser's voice and reads the English version. The real call uses Sarvam's Bengali voice.",
+    noVoice: "Your browser has no voice for previews.",
+  },
+};

@@ -1,0 +1,27 @@
+# Bolna credits ledger
+
+Rule: no real payments until free credits run out. Claude estimates the cost before every test and updates this file after it.
+Rate observed: $0.06/min (bundled models, Bolna shared number). Own provider keys cut it to ~$0.02/min platform fee.
+
+## Balance
+
+| Date | Event | Minutes | Cost | Balance after |
+|---|---|---|---|---|
+| 2026-10-19/21 | Sign-up credit (Roshan's account) | | +$5.00 | $5.00 |
+| 2026-10-21 | Template agent test call ("(v2) Onboarding - En + Hi"), ended by asking it to hang up | ~8 | -$0.51 | **$4.49** (~75 min) |
+
+## Credit that may arrive (not counted until it shows in the dashboard)
+
+- $10 "Buildathon credit": mentioned only in the credits form; not received yet.
+- Credits form request: +$15 Bolna, Sarvam $15, OpenAI $10 (if submitted; replies reported slow).
+- Teammates' own $5 sign-up credit each: usable only in their own accounts (testing on agent copies).
+
+## Planned spend (estimate before running)
+
+| Test | Calls × length | Estimated cost |
+|---|---|---|
+| 15-persona reminder test matrix | 15 × ~2 min | ~$1.80 |
+| Buffer for prompt fixes / reruns | ~10 × 2 min | ~$1.20 |
+| **Remaining after both** | | **~$1.50** |
+
+Pilot with real shops (Sat 24 Oct onward) needs a paid wallet anyway (trial = verified numbers only, 2 concurrent calls).

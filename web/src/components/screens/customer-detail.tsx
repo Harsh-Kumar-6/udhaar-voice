@@ -1,0 +1,499 @@
+"use client";
+
+import { format, parseISO } from "date-fns";
+import {
+  ArrowLeft,
+  BadgeIndianRupee,
+  Ellipsis,
+  MessageCircle,
+  PhoneCall,
+  PhoneOff,
+  Phone,
+  Plus,
+  Sparkles,
+  Users,
+} from "lucide-react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
+import {
+  CallStatusPill,
+  EmptyState,
+  ErrorBlock,
+  LanguageTag,
+  LoadingBlock,
+  MaskedPhone,
+  Money,
+  OutcomeBadge,
+  StatusChip,
+  TimeAgo,
+} from "@/components/app/bits";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { api } from "@/lib/api";
+import type { CustomerDetail } from "@/lib/api/contract";
+import { useApiMutation, useCustomer, useReminderCandidates, useShop } from "@/lib/api/hooks";
+import { formatINR, isPromiseBroken, normalizeIndianMobile, toDateKey, upiLink, whatsappShareLink } from "@/lib/domain/rules";
+import type { PaymentPromise } from "@/lib/domain/types";
+import { useT } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
+import { Initial } from "./customers";
+
+export function CustomerDetailScreen() {
+  const { id } = useParams<{ id: string }>();
+  const t = useT();
+  const q = useCustomer(id);
+
+  if (q.isPending) return <LoadingBlock />;
+  if (q.isError) return <ErrorBlock onRetry={() => q.refetch()} />;
+  if (!q.data)
+    return (
+      <EmptyState title={t.customers.detail.notFound} action={<Button asChild variant="outline"><Link href="/app/customers">{t.customers.detail.back}</Link></Button>} />
+    );
+  return <CustomerView d={q.data} />;
+}
+
+function CustomerView({ d }: { d: CustomerDetail }) {
+  const t = useT();
+  const c = t.customers.detail;
+  const { customer } = d;
+
+  return (
+    <div className="space-y-6">
+      <Link href="/app/customers" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="size-4" /> {c.back}
+      </Link>
+
+      <Card>
+        <CardContent className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <Initial name={customer.name} status={d.status} className="size-14 text-xl" />
+            <div className="min-w-0 space-y-1.5">
+              <h1 className="text-2xl font-bold">{customer.name}</h1>
+              {customer.nameNative ? (
+                <p lang={customer.language} className="text-muted-foreground">
+                  {customer.nameNative}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <StatusChip status={d.status} />
+                <LanguageTag language={customer.language} />
+                <MaskedPhone phone={customer.phone} />
+              </div>
+              {d.paysThrough ? (
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Users className="size-4" />
+                  <Link className="underline underline-offset-2" href={`/app/customers/${d.paysThrough.id}`}>
+                    {c.paysThrough(d.paysThrough.name)}
+                  </Link>
+                </p>
+              ) : null}
+              {d.paysFor.length ? (
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Users className="size-4" /> {c.paysFor(d.paysFor.map((p) => p.name).join(", "))}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 md:items-end">
+            <div className="md:text-right">
+              <div className="text-xs font-medium text-muted-foreground">{c.balance}</div>
+              <Money amount={d.balance} className={cn("font-heading text-3xl font-bold", d.balance > 0 ? "text-due" : "text-paid")} />
+            </div>
+            <CustomerActions d={d} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Card className="border-primary/25 bg-accent/60">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="size-4 text-primary" /> {c.memoryTitle}
+              </CardTitle>
+              <CardDescription>{c.memoryHint}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="rounded-lg border bg-background px-4 py-3 font-mono text-sm leading-relaxed">{d.memory}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{c.sections.calls}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {d.calls.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{c.noCalls}</p>
+              ) : (
+                <ul className="divide-y">
+                  {d.calls.map((call) => (
+                    <li key={call.id}>
+                      <Link href={`/app/calls/${call.id}`} className="flex items-center gap-3 py-3 hover:bg-muted/40">
+                        <PhoneCall className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium">{format(parseISO(call.startedAt ?? call.scheduledAt), "EEE d MMM, h:mm a")}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{call.extraction?.summary ?? t.common.callStatus[call.status]}</span>
+                        </span>
+                        {call.extraction && call.status === "completed" ? <OutcomeBadge outcome={call.extraction.outcome} /> : <CallStatusPill status={call.status} />}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Ledger d={d} />
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>{c.sections.promises}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {d.promises.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{c.noPromises}</p>
+              ) : (
+                <ul className="space-y-3">
+                  {d.promises.map((p) => (
+                    <PromiseRow key={p.id} p={p} />
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Disputes d={d} />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{c.sections.notes}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {d.notes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{c.noNotes}</p>
+              ) : (
+                <ul className="space-y-3">
+                  {d.notes.map((n) => (
+                    <li key={n.id} className="space-y-1">
+                      <span className="text-xs font-semibold text-muted-foreground">{t.common.noteKind[n.kind]}</span>
+                      <p className="text-sm">{n.text}</p>
+                      <TimeAgo iso={n.createdAt} className="text-xs text-muted-foreground" />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomerActions({ d }: { d: CustomerDetail }) {
+  const t = useT();
+  const c = t.customers.detail;
+  const router = useRouter();
+  const shop = useShop();
+  const candidates = useReminderCandidates();
+  const schedule = useApiMutation(api.scheduleReminders);
+  const update = useApiMutation((patch: Parameters<typeof api.updateCustomer>[1]) => api.updateCustomer(d.customer.id, patch));
+  const [payOpen, setPayOpen] = useState(false);
+  const [entryOpen, setEntryOpen] = useState(false);
+  // The dashboard's "Update number" links here with #phone. This component only renders in the
+  // browser (after the customer has loaded), so reading the hash while creating state is safe.
+  const [phoneOpen, setPhoneOpen] = useState(() => typeof window !== "undefined" && window.location.hash === "#phone");
+
+  const me = candidates.data?.find((x) => x.customer.id === d.customer.id);
+  const blocked = me && !me.eligible ? me.reason : undefined;
+
+  const callNow = async () => {
+    const r = await schedule.mutateAsync({ customerIds: [d.customer.id], at: "now", language: "auto", bypassHours: shop.data?.demoBypassHours ?? false });
+    if (!r.batch) return toast.error(r.skipped[0]?.reason ?? "Couldn't schedule the call");
+    if (r.movedTo) toast.info(c.callMoved(format(parseISO(r.movedTo), "EEE h:mm a")));
+    else toast.success(c.callScheduled(d.customer.name));
+    router.push(`/app/calls/${r.batch.callIds[0]}`);
+  };
+
+  const shopName = shop.data?.name ?? "";
+  const upi = shop.data ? upiLink({ upiId: shop.data.upiId, payeeName: shopName, amount: d.balance, note: "Khata dues" }) : "";
+  const whatsapp = d.customer.phone ? whatsappShareLink(d.customer.phone, c.upiMessage(shopName, formatINR(d.balance), upi)) : undefined;
+
+  return (
+    <div className="flex flex-wrap gap-2 md:justify-end">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span tabIndex={blocked ? 0 : -1}>
+            <Button size="lg" onClick={callNow} disabled={!!blocked || schedule.isPending || !me}>
+              <PhoneCall /> {c.actions.callNow}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        {blocked ? <TooltipContent>{blocked}</TooltipContent> : null}
+      </Tooltip>
+      {whatsapp && d.balance > 0 ? (
+        <Button asChild size="lg" variant="outline">
+          <a href={whatsapp} target="_blank" rel="noopener noreferrer">
+            <MessageCircle /> {c.actions.shareUpi}
+          </a>
+        </Button>
+      ) : null}
+      <Button size="lg" variant="outline" onClick={() => setPayOpen(true)} disabled={d.balance <= 0}>
+        <BadgeIndianRupee /> {c.actions.recordPayment}
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="icon-lg" variant="outline" aria-label={c.actions.more}>
+            <Ellipsis />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setEntryOpen(true)}>
+            <Plus /> {c.actions.addEntry}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setPhoneOpen(true)}>
+            <Phone /> {c.actions.editPhone}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={async () => {
+              await update.mutateAsync({ optedOut: !d.customer.optedOut });
+              toast.success(d.customer.optedOut ? c.optedIn : c.optedOut);
+            }}
+          >
+            <PhoneOff /> {d.customer.optedOut ? c.actions.optIn : c.actions.optOut}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <PaymentDialog open={payOpen} onOpenChange={setPayOpen} customerId={d.customer.id} suggested={d.nextPromise?.amount ?? d.balance} />
+      <EntryDialog open={entryOpen} onOpenChange={setEntryOpen} customerId={d.customer.id} />
+      <PhoneDialog open={phoneOpen} onOpenChange={setPhoneOpen} current={d.customer.phone} onSave={(phone) => update.mutateAsync({ phone })} />
+    </div>
+  );
+}
+
+function PromiseRow({ p }: { p: PaymentPromise }) {
+  const s = useT().customers.detail.promiseStatus;
+  const overdue = isPromiseBroken(p, new Date()) && p.status === "open";
+  const label = overdue ? s.overdue : s[p.status];
+  const tone = overdue || p.status === "broken" ? "bg-overdue-soft text-overdue" : p.status === "kept" ? "bg-paid-soft text-paid" : "bg-promised-soft text-promised";
+  return (
+    <li className="flex items-center justify-between gap-3">
+      <span className="flex flex-col">
+        <Money amount={p.amount} className="font-semibold" />
+        <span className="text-xs text-muted-foreground">by {format(parseISO(p.dueDate), "EEE d MMM")}</span>
+      </span>
+      <span className={cn("inline-flex h-6 items-center rounded-full px-2.5 text-xs font-semibold", tone)}>{label}</span>
+    </li>
+  );
+}
+
+function Disputes({ d }: { d: CustomerDetail }) {
+  const c = useT().customers.detail;
+  const resolve = useApiMutation(api.resolveDispute);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{c.sections.disputes}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {d.disputes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{c.noDisputes}</p>
+        ) : (
+          <ul className="space-y-3">
+            {d.disputes.map((x) => (
+              <li key={x.id} className={cn("space-y-2 rounded-lg border p-3", x.status === "open" && "border-disputed/40 bg-disputed-soft/40")}>
+                <p className="text-sm">{x.reason}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <TimeAgo iso={x.createdAt} className="text-xs text-muted-foreground" />
+                  {x.status === "open" ? (
+                    <Button size="sm" variant="outline" disabled={resolve.isPending} onClick={() => resolve.mutate(x.id)}>
+                      {c.resolve}
+                    </Button>
+                  ) : (
+                    <span className="text-xs font-medium text-paid">{c.resolved}</span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Ledger({ d }: { d: CustomerDetail }) {
+  const c = useT().customers.detail;
+  const rows = [
+    ...d.entries.map((e) => ({ id: e.id, date: e.date, kind: "entry" as const, amount: e.amount, text: e.items, photo: e.source === "photo" })),
+    ...d.payments.map((p) => ({ id: p.id, date: p.date, kind: "payment" as const, amount: p.amount, text: p.method.toUpperCase(), photo: false })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{c.sections.ledger}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="divide-y rounded-lg border ledger-paper">
+          {rows.map((r) => (
+            <li key={r.id} className="flex items-center gap-3 py-2 pr-3 pl-14">
+              <span className="w-16 shrink-0 font-mono text-xs text-muted-foreground">{format(parseISO(r.date), "d MMM")}</span>
+              <span className="min-w-0 flex-1 truncate text-sm">
+                <span className="font-medium">{r.kind === "entry" ? c.entry : c.payment}</span> · {r.text}
+                {r.photo ? <span className="ml-1.5 text-xs text-muted-foreground">({c.fromPhoto})</span> : null}
+              </span>
+              <Money amount={r.amount} className={cn("text-sm font-semibold", r.kind === "entry" ? "text-due" : "text-paid")} />
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PaymentDialog({ open, onOpenChange, customerId, suggested }: { open: boolean; onOpenChange: (v: boolean) => void; customerId: string; suggested: number }) {
+  const p = useT().customers.detail.paymentDialog;
+  const [amount, setAmount] = useState(String(suggested));
+  const [method, setMethod] = useState<"cash" | "upi">("cash");
+  const [error, setError] = useState<string | null>(null);
+  const pay = useApiMutation(api.recordPayment);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const value = Math.round(Number(amount));
+    if (!Number.isFinite(value) || value <= 0) return setError(p.invalid);
+    await pay.mutateAsync({ customerId, amount: value, method, date: toDateKey(new Date()) });
+    toast.success(p.saved(formatINR(value)));
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <form onSubmit={submit} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>{p.title}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="payment-amount">{p.amount}</Label>
+            <Input id="payment-amount" inputMode="numeric" value={amount} onChange={(e) => { setAmount(e.target.value); setError(null); }} aria-invalid={!!error} />
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </div>
+          <div className="space-y-2">
+            <Label>{p.method}</Label>
+            <ToggleGroup type="single" variant="outline" value={method} onValueChange={(v) => v && setMethod(v as "cash" | "upi")}>
+              <ToggleGroupItem value="cash">{p.cash}</ToggleGroupItem>
+              <ToggleGroupItem value="upi">{p.upi}</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+          <DialogFooter>
+            <Button type="submit" size="lg" disabled={pay.isPending}>
+              {p.save}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EntryDialog({ open, onOpenChange, customerId }: { open: boolean; onOpenChange: (v: boolean) => void; customerId: string }) {
+  const e = useT().customers.detail.entryDialog;
+  const [amount, setAmount] = useState("");
+  const [items, setItems] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const add = useApiMutation(api.addEntry);
+
+  const submit = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    const value = Math.round(Number(amount));
+    if (!Number.isFinite(value) || value <= 0 || !items.trim()) return setError(e.invalid);
+    await add.mutateAsync({ customerId, amount: value, items: items.trim(), date: toDateKey(new Date()), source: "manual" });
+    toast.success(e.saved(formatINR(value)));
+    setAmount("");
+    setItems("");
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <form onSubmit={submit} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>{e.title}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="entry-amount">{e.amount}</Label>
+            <Input id="entry-amount" inputMode="numeric" value={amount} onChange={(x) => { setAmount(x.target.value); setError(null); }} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="entry-items">{e.items}</Label>
+            <Input id="entry-items" value={items} placeholder={e.itemsPlaceholder} onChange={(x) => { setItems(x.target.value); setError(null); }} />
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <DialogFooter>
+            <Button type="submit" size="lg" disabled={add.isPending}>
+              {e.save}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PhoneDialog({ open, onOpenChange, current, onSave }: { open: boolean; onOpenChange: (v: boolean) => void; current: string; onSave: (phone: string) => Promise<unknown> }) {
+  const p = useT().customers.detail.phoneDialog;
+  const [value, setValue] = useState(current.replace(/^\+91/, ""));
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const phone = normalizeIndianMobile(value);
+    if (!phone) return setError(p.invalid);
+    setSaving(true);
+    await onSave(phone);
+    setSaving(false);
+    toast.success(p.saved);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <form onSubmit={submit} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>{p.title}</DialogTitle>
+            <DialogDescription>{p.description}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="customer-phone">{p.label}</Label>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-sm text-muted-foreground">+91</span>
+              <Input id="customer-phone" inputMode="tel" autoComplete="off" value={value} onChange={(e) => { setValue(e.target.value); setError(null); }} aria-invalid={!!error} />
+            </div>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button type="submit" size="lg" disabled={saving}>
+              {p.save}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

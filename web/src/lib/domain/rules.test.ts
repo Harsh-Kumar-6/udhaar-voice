@@ -1,0 +1,184 @@
+import { describe, expect, it } from "vitest";
+import {
+  balanceOf,
+  buildMemory,
+  canRemind,
+  confidenceLabel,
+  customerStatus,
+  formatINR,
+  isPromiseBroken,
+  isWithinCallingHours,
+  maskPhone,
+  nextAllowedTime,
+  normalizeIndianMobile,
+  toDateKey,
+  upiLink,
+} from "./rules";
+import type { Dispute, Note, PaymentPromise } from "./types";
+
+const at = (iso: string) => new Date(iso);
+const hours = { start: 8, end: 19 };
+
+describe("balanceOf", () => {
+  it("subtracts payments from entries", () => {
+    expect(balanceOf([{ amount: 300 }, { amount: 150 }], [{ amount: 100 }])).toBe(350);
+  });
+  it("never goes negative", () => {
+    expect(balanceOf([{ amount: 100 }], [{ amount: 250 }])).toBe(0);
+  });
+});
+
+describe("customerStatus", () => {
+  const now = at("2026-10-21T12:00:00");
+  const base = { balance: 500, optedOut: false, promises: [], disputes: [] };
+
+  it("is paid when nothing is owed, even with an open dispute", () => {
+    expect(customerStatus({ ...base, balance: 0, disputes: [{ status: "open" }] }, now)).toBe("paid");
+  });
+  it("puts opt-out ahead of disputes and promises", () => {
+    expect(customerStatus({ ...base, optedOut: true, disputes: [{ status: "open" }] }, now)).toBe("opted_out");
+  });
+  it("puts disputes ahead of promises", () => {
+    expect(
+      customerStatus({ ...base, disputes: [{ status: "open" }], promises: [{ status: "open", dueDate: "2026-10-25" }] }, now),
+    ).toBe("disputed");
+  });
+  it("is overdue when an open promise's date has passed", () => {
+    expect(customerStatus({ ...base, promises: [{ status: "open", dueDate: "2026-10-20" }] }, now)).toBe("overdue");
+  });
+  it("is promised when an open promise is today or later", () => {
+    expect(customerStatus({ ...base, promises: [{ status: "open", dueDate: "2026-10-21" }] }, now)).toBe("promised");
+  });
+  it("is due otherwise", () => {
+    expect(customerStatus({ ...base, promises: [{ status: "kept", dueDate: "2026-10-01" }] }, now)).toBe("due");
+  });
+});
+
+describe("isPromiseBroken", () => {
+  const now = at("2026-10-21T09:00:00");
+  it("treats a promise due today as not yet broken", () => {
+    expect(isPromiseBroken({ status: "open", dueDate: "2026-10-21" }, now)).toBe(false);
+  });
+  it("treats an open promise due yesterday as broken", () => {
+    expect(isPromiseBroken({ status: "open", dueDate: "2026-10-20" }, now)).toBe(true);
+  });
+  it("never treats a kept promise as broken", () => {
+    expect(isPromiseBroken({ status: "kept", dueDate: "2026-09-01" }, now)).toBe(false);
+  });
+});
+
+describe("calling hours", () => {
+  it("allows calls inside the window", () => {
+    expect(isWithinCallingHours(at("2026-10-21T08:00:00"), hours)).toBe(true);
+    expect(isWithinCallingHours(at("2026-10-21T18:59:00"), hours)).toBe(true);
+  });
+  it("blocks calls at the end hour and before the start", () => {
+    expect(isWithinCallingHours(at("2026-10-21T19:00:00"), hours)).toBe(false);
+    expect(isWithinCallingHours(at("2026-10-21T07:59:00"), hours)).toBe(false);
+  });
+  it("moves early calls to the same morning", () => {
+    expect(nextAllowedTime(at("2026-10-21T06:30:00"), hours)).toEqual(at("2026-10-21T08:00:00"));
+  });
+  it("moves late calls to the next morning, across month ends", () => {
+    expect(nextAllowedTime(at("2026-10-31T21:15:00"), hours)).toEqual(at("2026-11-01T08:00:00"));
+  });
+  it("keeps calls already inside the window", () => {
+    const t = at("2026-10-21T10:15:00");
+    expect(nextAllowedTime(t, hours)).toBe(t);
+  });
+});
+
+describe("canRemind", () => {
+  const now = at("2026-10-21T12:00:00");
+  it("allows the first reminder", () => {
+    expect(canRemind(undefined, 3, now)).toBe(true);
+  });
+  it("blocks a second reminder inside the gap", () => {
+    expect(canRemind(at("2026-10-19T12:00:01"), 3, now)).toBe(false);
+  });
+  it("allows a reminder once the gap has passed", () => {
+    expect(canRemind(at("2026-10-18T12:00:00"), 3, now)).toBe(true);
+  });
+});
+
+describe("formatting", () => {
+  it("uses Indian digit grouping", () => {
+    expect(formatINR(124000)).toBe("₹1,24,000");
+    expect(formatINR(350)).toBe("₹350");
+  });
+  it("masks all but the last four digits", () => {
+    expect(maskPhone("+919000000112")).toBe("+91 ••••• •0112");
+  });
+  it("formats local dates without UTC drift", () => {
+    expect(toDateKey(at("2026-10-21T23:30:00"))).toBe("2026-10-21");
+  });
+  it("labels confidence like Bolna", () => {
+    expect(confidenceLabel(0.8)).toBe("High");
+    expect(confidenceLabel(0.65)).toBe("Medium");
+    expect(confidenceLabel(0.4)).toBe("Low");
+  });
+});
+
+describe("normalizeIndianMobile", () => {
+  it("accepts common ways of writing an Indian mobile number", () => {
+    expect(normalizeIndianMobile("98765 43210")).toBe("+919876543210");
+    expect(normalizeIndianMobile("+91 98765-43210")).toBe("+919876543210");
+    expect(normalizeIndianMobile("098765 43210")).toBe("+919876543210");
+  });
+  it("rejects landlines and short numbers", () => {
+    expect(normalizeIndianMobile("033 2582 0000")).toBeNull();
+    expect(normalizeIndianMobile("12345")).toBeNull();
+  });
+});
+
+describe("upiLink", () => {
+  it("builds a standard upi:// link", () => {
+    const link = upiLink({ upiId: "shop@upi", payeeName: "Maa Tara Stores", amount: 350, note: "Khata dues" });
+    expect(link.startsWith("upi://pay?")).toBe(true);
+    expect(new URLSearchParams(link.split("?")[1]).get("am")).toBe("350");
+  });
+});
+
+describe("buildMemory", () => {
+  const now = at("2026-10-21T12:00:00");
+  const fmt = (d: string) => d;
+  const promise = (p: Partial<PaymentPromise>): PaymentPromise => ({
+    id: "p",
+    customerId: "c",
+    amount: 350,
+    dueDate: "2026-10-24",
+    status: "open",
+    createdAt: "2026-10-20T10:00:00",
+    ...p,
+  });
+
+  it("mentions an upcoming promise", () => {
+    expect(buildMemory({ promises: [promise({})], disputes: [], notes: [] }, now, fmt)).toContain("Promised ₹350 by 2026-10-24");
+  });
+  it("warns after two missed promises", () => {
+    const memory = buildMemory(
+      {
+        promises: [
+          promise({ id: "a", dueDate: "2026-10-01", createdAt: "2026-09-28T10:00:00" }),
+          promise({ id: "b", dueDate: "2026-10-15", createdAt: "2026-10-10T10:00:00" }),
+        ],
+        disputes: [],
+        notes: [],
+      },
+      now,
+      fmt,
+    );
+    expect(memory).toContain("Has missed 2 promises");
+  });
+  it("tells the agent not to chase a disputed amount", () => {
+    const dispute: Dispute = { id: "d", customerId: "c", kind: "already_paid", reason: "Says ₹200 was paid by UPI", status: "open", createdAt: "2026-10-20T10:00:00" };
+    expect(buildMemory({ promises: [], disputes: [dispute], notes: [] }, now, fmt)).toContain("Do not ask for the disputed amount");
+  });
+  it("includes a life event note", () => {
+    const note: Note = { id: "n", customerId: "c", kind: "life_event", text: "Pays after salary on the 5th.", createdAt: "2026-10-20T10:00:00" };
+    expect(buildMemory({ promises: [], disputes: [], notes: [note] }, now, fmt)).toContain("salary on the 5th");
+  });
+  it("says so when there is no history", () => {
+    expect(buildMemory({ promises: [], disputes: [], notes: [] }, now, fmt)).toBe("No previous calls.");
+  });
+});
