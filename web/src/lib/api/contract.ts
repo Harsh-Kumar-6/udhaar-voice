@@ -156,6 +156,9 @@ export type AskAnswer = {
   action?: { label: string; href: string };
 };
 
+/** Speech-to-text result for a question spoken to the khata. */
+export type Transcription = { text: string; language: Language };
+
 export type ScheduleInput = {
   customerIds: string[];
   /** ISO timestamp, or "now". */
@@ -208,6 +211,8 @@ export interface UdhaarApi {
   undoKhataImport(id: string): Promise<KhataUndoResult>;
 
   ask(question: string): Promise<AskAnswer>;
+  /** Turns a recorded voice question (Bengali, Hindi or English) into text for `ask`. */
+  transcribe(audio: Blob): Promise<Transcription>;
   getDashboard(): Promise<DashboardData>;
   getDailyReport(): Promise<DailyReport>;
   sendReportCall(): Promise<Call>;

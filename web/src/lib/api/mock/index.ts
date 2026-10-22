@@ -21,6 +21,7 @@ import {
 } from "./queries";
 import { buildReminderScript } from "./scripts";
 import { readDb, resetDb, updateDb } from "./store";
+import { SAMPLE_TRANSCRIPTIONS } from "./voice-sample";
 import type { MockDb } from "./types";
 
 /**
@@ -29,6 +30,8 @@ import type { MockDb } from "./types";
  */
 
 const delay = (ms = 120 + Math.random() * 180) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+let transcriptions = 0;
 
 // Results are deep-copied, like JSON from a server. Handing out live objects would let
 // TanStack Query miss updates (it compares old and new data, which would be the same object).
@@ -230,6 +233,12 @@ export const mockApi: UdhaarApi = {
 
   // The assistant can schedule calls, so it goes through `write`.
   ask: (question) => write((db, now) => answerQuestion(db, question, now)),
+
+  // The audio is ignored: each recording "hears" the next sample question.
+  transcribe: async () => {
+    await delay(700 + Math.random() * 500); // speech-to-text takes a moment
+    return clone(SAMPLE_TRANSCRIPTIONS[transcriptions++ % SAMPLE_TRANSCRIPTIONS.length]);
+  },
 
   getDashboard: () => read((db, now) => dashboard(db, now)),
   getDailyReport: () => read((db, now) => dailyReport(db, now)),

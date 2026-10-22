@@ -59,7 +59,7 @@ bolna/
 |---|---|
 | Phone calls (scripted Bengali/Hindi conversations) | Calling hours, gap between reminders, opt-outs, wrong numbers, refusals, shared calling lines and the queue |
 | Khata photo reading (same sample result for every photo) | What a call changes: promises, disputes, notes, knowledge graph, memory; matching photo rows to saved entries, undoing imports |
-| The voice assistant (typed questions, rule-based answers) | WhatsApp messages with UPI payment links |
+| The voice assistant (typed or spoken questions; speech-to-text returns a sample question; rule-based answers) | WhatsApp messages with UPI payment links |
 | Storage (localStorage, one copy per browser) | All screens, built on the API contract the backend will implement |
 
 ## Next steps (replacing the mock)
