@@ -50,7 +50,7 @@ export const settings = {
     simulated: [
       "Phone calls: scripted Bengali and Hindi conversations play out instead of real calls.",
       "Reading khata photos: every photo returns the same sample result.",
-      "The voice assistant: you type questions; answers come from your data without an LLM.",
+      "The voice assistant: you type or speak questions (speech returns a sample question); answers come from your data without an LLM.",
       "Saving: data lives only in this browser.",
     ],
     realTitle: "Already works the way the real app will",
