@@ -173,6 +173,12 @@ export type ScheduleResult = {
   outsideHours?: CallingHours;
 };
 
+export type RescheduleResult = {
+  call: Call;
+  /** Set when the requested time is outside calling hours. The call is unchanged; the shopkeeper picks another time. */
+  outsideHours?: CallingHours;
+};
+
 export type EligibleCustomer = CustomerSummary & {
   eligible: boolean;
   /** Why the customer cannot be called right now. */
@@ -200,6 +206,10 @@ export interface UdhaarApi {
   listCalls(): Promise<CallListItem[]>;
   getCall(id: string): Promise<CallDetail | null>;
   scheduleReminders(input: ScheduleInput): Promise<ScheduleResult>;
+  /** Move a scheduled call to a new time. Throws if the call is no longer in a schedulable state. */
+  rescheduleCall(id: string, at: string, bypassHours: boolean): Promise<RescheduleResult>;
+  /** Cancel a scheduled or queued call. No-op if it has already run or been cancelled. */
+  cancelCall(id: string): Promise<void>;
   listBatches(): Promise<BatchSummary[]>;
   cancelBatch(id: string): Promise<void>;
 

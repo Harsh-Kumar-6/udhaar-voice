@@ -1,6 +1,7 @@
+import { format } from "date-fns";
 import { dialOrder, isPromiseBroken, isWithinCallingHours } from "@/lib/domain/rules";
 import type { Call, CallStatus, Language, ReminderBatch, Turn } from "@/lib/domain/types";
-import type { ScheduleInput, ScheduleResult } from "../contract";
+import type { RescheduleResult, ScheduleInput, ScheduleResult } from "../contract";
 import { candidates, customerDetail } from "./queries";
 import { buildReminderScript, transcriptSeconds } from "./scripts";
 import { CALL_LINES, COST_PER_MINUTE_USD } from "./seed";
@@ -118,6 +119,50 @@ export function scheduleReportCall(db: MockDb, turns: Turn[], summary: string, n
   };
   db.calls.push(call);
   return call;
+}
+
+export function rescheduleCallInDb(db: MockDb, callId: string, at: string, bypassHours: boolean, now: Date): RescheduleResult {
+  const call = db.calls.find((c) => c.id === callId);
+  if (!call) throw new Error("Call not found");
+  if (call.status !== "scheduled") throw new Error("Only scheduled calls can be moved");
+
+  const when = new Date(at);
+  if (!Number.isFinite(when.getTime())) throw new Error("Invalid time");
+  const hours = db.shop.callingHours;
+  const inside = isWithinCallingHours(when, hours);
+  // Same rule as scheduling: outside calling hours nothing changes; the shopkeeper picks another time.
+  if (!inside && !bypassHours) return { call, outsideHours: hours };
+  const detail = inside ? `Rescheduled to ${format(when, "EEE d MMM, h:mm a")}` : "Rescheduled outside calling hours: bypassed for this demo";
+
+  call.scheduledAt = iso(when);
+  call.events.push({ at: iso(now), status: "scheduled", detail });
+
+  // Keep the owning batch's scheduledAt in sync when it only holds this one call.
+  if (call.batchId) {
+    const batch = db.batches.find((b) => b.id === call.batchId);
+    if (batch && batch.callIds.length === 1) batch.scheduledAt = iso(when);
+  }
+
+  return { call };
+}
+
+export function cancelCallInDb(db: MockDb, callId: string, now: Date) {
+  const call = db.calls.find((c) => c.id === callId);
+  if (!call) return;
+  if (call.status !== "scheduled" && call.status !== "queued") return;
+  call.status = "cancelled";
+  call.events.push({ at: iso(now), status: "cancelled", detail: "Cancelled by the shopkeeper" });
+  delete db.plans[call.id];
+  if (call.batchId) {
+    const batch = db.batches.find((b) => b.id === call.batchId);
+    if (batch) {
+      const stillActive = batch.callIds.some((id) => {
+        const s = db.calls.find((k) => k.id === id)?.status;
+        return s && ACTIVE.includes(s);
+      });
+      if (!stillActive) batch.status = "cancelled";
+    }
+  }
 }
 
 export function cancelBatchInDb(db: MockDb, batchId: string, now: Date) {

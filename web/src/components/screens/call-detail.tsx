@@ -1,24 +1,28 @@
 "use client";
 
 import { format, parseISO } from "date-fns";
-import { ArrowLeft, AudioLines, CalendarClock, CircleDot, Layers, PhoneCall, Scale, StickyNote, Wallet } from "lucide-react";
+import { ArrowLeft, AudioLines, CalendarClock, CircleDot, Layers, PhoneCall, Scale, StickyNote, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   CallStatusPill,
   ConfidenceBadge,
   EmptyState,
   ErrorBlock,
+  hourLabel,
   LanguageTag,
   LoadingBlock,
   Money,
   OutcomeBadge,
 } from "@/components/app/bits";
+import { ScheduleDialog } from "@/components/app/schedule-dialog";
 import { Transcript } from "@/components/app/transcript";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useCall } from "@/lib/api/hooks";
+import { api } from "@/lib/api";
+import { useApiMutation, useCall, useShop } from "@/lib/api/hooks";
 import type { CallDetail, QueueSpot } from "@/lib/api/contract";
 import type { Call } from "@/lib/domain/types";
 import { useNow } from "@/hooks/use-now";
@@ -150,8 +154,9 @@ function CallView({ d }: { d: CallDetail }) {
 }
 
 function LivePanel({ call, queue }: { call: Call; queue?: QueueSpot }) {
-  const { calls, common } = useT();
-  const c = calls.detail.live;
+  const t = useT();
+  const c = t.calls.detail.live;
+  const d = t.calls.detail;
   const now = useNow(500);
   const since = call.status === "in_progress" ? call.answeredAt : call.startedAt;
   const elapsed = since ? Math.max(0, (now - Date.parse(since)) / 1000) : 0;
@@ -163,6 +168,13 @@ function LivePanel({ call, queue }: { call: Call; queue?: QueueSpot }) {
         : call.status === "ringing"
           ? c.ringing
           : c.in_progress;
+  const shop = useShop();
+  const reschedule = useApiMutation((at: string) =>
+    api.rescheduleCall(call.id, at, shop.data?.demoBypassHours ?? false),
+  );
+  const cancel = useApiMutation(() => api.cancelCall(call.id));
+  const [editOpen, setEditOpen] = useState(false);
+  const canEdit = call.status === "scheduled";
   return (
     <div className="flex flex-col items-center gap-3 rounded-2xl border border-primary/30 bg-accent px-6 py-8 text-center">
       <span className="relative grid size-16 place-items-center rounded-full bg-primary text-primary-foreground">
@@ -175,11 +187,42 @@ function LivePanel({ call, queue }: { call: Call; queue?: QueueSpot }) {
       ) : null}
       {queue ? (
         <div className="space-y-1">
-          <p className="font-medium">{c.inLine(queue.position, common.wait(queue.waitSeconds))}</p>
+          <p className="font-medium">{c.inLine(queue.position, t.common.wait(queue.waitSeconds))}</p>
           {queue.busyLines >= queue.lines ? <p className="max-w-md text-sm text-muted-foreground">{c.linesBusy(queue.lines)}</p> : null}
         </div>
       ) : null}
       <p className="max-w-md text-sm text-muted-foreground">{c.note}</p>
+      {canEdit ? (
+        <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+          <Button variant="outline" size="lg" onClick={() => setEditOpen(true)} disabled={reschedule.isPending || cancel.isPending}>
+            <CalendarClock /> {d.reschedule}
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={async () => {
+              if (!window.confirm(d.cancelConfirm)) return;
+              await cancel.mutateAsync();
+              toast.success(d.cancelled);
+            }}
+            disabled={reschedule.isPending || cancel.isPending}
+          >
+            <X /> {d.cancel}
+          </Button>
+          <ScheduleDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            pending={reschedule.isPending}
+            initialAt={call.scheduledAt}
+            onSubmit={async (iso) => {
+              const r = await reschedule.mutateAsync(iso);
+              if (r.outsideHours) return void toast.error(t.reminders.outsideHours(hourLabel(r.outsideHours.start), hourLabel(r.outsideHours.end)));
+              toast.success(d.rescheduled(format(parseISO(r.call.scheduledAt), "EEE h:mm a")));
+              setEditOpen(false);
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
