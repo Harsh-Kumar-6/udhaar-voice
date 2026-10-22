@@ -42,11 +42,19 @@ export function answerQuestion(db: MockDb, question: string, now: Date): AskAnsw
       };
     }
     const result = scheduleInDb(db, { customerIds: [named.id], at: has(q, WORDS.tomorrow) ? when.toISOString() : "now", language: "auto", bypassHours: db.shop.demoBypassHours }, now);
-    const at = result.movedTo ?? result.batch?.scheduledAt ?? when.toISOString();
+    if (result.outsideHours) {
+      const hour = (h: number) => format(new Date(2026, 0, 1, h), "h a");
+      return {
+        question,
+        tool: `schedule_call(name: "${named.name}")`,
+        answer: `That's outside calling hours (${hour(result.outsideHours.start)}–${hour(result.outsideHours.end)}). Tell me a time inside them.`,
+      };
+    }
+    const at = result.batch?.scheduledAt ?? when.toISOString();
     return {
       question,
       tool: `schedule_call(name: "${named.name}", when: "${format(new Date(at), "EEE h:mm a")}")`,
-      answer: `Done. I'll call ${named.name} ${format(new Date(at), "EEEE 'at' h:mm a")}${result.movedTo ? " (moved into calling hours)" : ""}.`,
+      answer: `Done. I'll call ${named.name} ${format(new Date(at), "EEEE 'at' h:mm a")}.`,
       action: { label: "See the scheduled call", href: "/app/reminders" },
     };
   }

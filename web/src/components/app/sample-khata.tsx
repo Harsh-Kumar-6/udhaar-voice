@@ -24,7 +24,10 @@ export function SampleKhataPage({ className, scanning = false }: { className?: s
               <span className={cn("font-bold", isBengali(line.written.name) ? bengaliHand.className : latinHand.className)}>{line.written.name}</span>{" "}
               <span className={cn("text-muted-foreground", isBengali(line.written.items) ? bengaliHand.className : latinHand.className)}>{line.written.items}</span>
             </span>
-            <span className={cn("text-due", isBengali(line.written.amount) ? bengaliHand.className : latinHand.className)}>{line.written.amount}</span>
+            <span className={cn("text-due", isBengali(line.written.amount) ? bengaliHand.className : latinHand.className)}>
+              {line.written.struck ? <s className="mr-1 text-muted-foreground decoration-2">{line.written.struck}</s> : null}
+              {line.written.amount}
+            </span>
           </li>
         ))}
       </ul>

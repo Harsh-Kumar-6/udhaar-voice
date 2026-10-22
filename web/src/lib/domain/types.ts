@@ -62,9 +62,26 @@ export const LedgerEntry = z.object({
   items: z.string(),
   date: isoDate,
   source: EntrySource,
+  /** The khata photo import that added it, so a whole import can be undone at once. */
+  importId: z.string().optional(),
   createdAt: isoDateTime,
 });
 export type LedgerEntry = z.infer<typeof LedgerEntry>;
+
+/** One saved khata photo: what it added and changed, so the shopkeeper can undo it in one go. */
+export const KhataImport = z.object({
+  id: z.string(),
+  shopId: z.string(),
+  source: z.enum(["sample", "upload"]),
+  createdAt: isoDateTime,
+  entryIds: z.array(z.string()),
+  /** Customers created by this import. */
+  customerIds: z.array(z.string()),
+  /** Saved entries this import changed, with their values before the change. */
+  updates: z.array(z.object({ entryId: z.string(), previous: z.object({ amount: rupees, items: z.string() }) })),
+  undoneAt: isoDateTime.optional(),
+});
+export type KhataImport = z.infer<typeof KhataImport>;
 
 export const PaymentMethod = z.enum(["cash", "upi"]);
 export const Payment = z.object({

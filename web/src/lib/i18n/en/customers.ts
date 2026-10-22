@@ -27,7 +27,7 @@ export const customers = {
       more: "More actions",
     },
     callScheduled: (name: string) => `Calling ${name} now`,
-    callMoved: (time: string) => `Outside calling hours, so the call is scheduled for ${time}`,
+    outsideHours: (start: string, end: string) => `It's outside calling hours (${start}–${end}). Call during those hours.`,
     sections: {
       promises: "Promises",
       disputes: "Disputes",

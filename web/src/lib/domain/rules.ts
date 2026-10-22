@@ -63,15 +63,6 @@ export function isWithinCallingHours(at: Date, hours: CallingHours): boolean {
   return h >= hours.start && h < hours.end;
 }
 
-/** The earliest moment at or after `at` that is inside calling hours. */
-export function nextAllowedTime(at: Date, hours: CallingHours): Date {
-  if (isWithinCallingHours(at, hours)) return at;
-  const next = new Date(at);
-  if (at.getHours() >= hours.end) next.setDate(next.getDate() + 1);
-  next.setHours(hours.start, 0, 0, 0);
-  return next;
-}
-
 /** Customers are reminded at most once every `gapDays` days. */
 export function canRemind(lastReminderAt: Date | undefined, gapDays: number, now: Date): boolean {
   if (!lastReminderAt) return true;
@@ -82,6 +73,72 @@ export function canRemind(lastReminderAt: Date | undefined, gapDays: number, now
 /** When the customer becomes eligible for the next reminder. */
 export function nextReminderDate(lastReminderAt: Date, gapDays: number): Date {
   return new Date(lastReminderAt.getTime() + gapDays * 24 * 60 * 60 * 1000);
+}
+
+/** A call waiting for a free line. */
+type WaitingCall = { shopId: string; scheduledAt: string };
+
+/**
+ * The order waiting calls get a line in. Every shop shares our one Bolna account, so the lines are
+ * shared too. Each line goes to the shop with the fewest calls on the line (counting calls already
+ * given a line in this ordering); within a shop, the call that has waited longest goes first.
+ * One shop's big batch can't hold up everyone else.
+ */
+export function dialOrder<T extends WaitingCall>(waiting: T[], onLine: { shopId: string }[]): T[] {
+  const load = new Map<string, number>();
+  for (const c of onLine) load.set(c.shopId, (load.get(c.shopId) ?? 0) + 1);
+  const queues = new Map<string, T[]>();
+  for (const c of [...waiting].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))) {
+    queues.set(c.shopId, [...(queues.get(c.shopId) ?? []), c]);
+  }
+  const order: T[] = [];
+  while (queues.size > 0) {
+    let pick: [string, T[]] | undefined;
+    for (const entry of queues) {
+      if (!pick) {
+        pick = entry;
+        continue;
+      }
+      const a = load.get(entry[0]) ?? 0;
+      const b = load.get(pick[0]) ?? 0;
+      if (a < b || (a === b && entry[1][0].scheduledAt < pick[1][0].scheduledAt)) pick = entry;
+    }
+    const [shopId, queue] = pick!;
+    order.push(queue.shift()!);
+    load.set(shopId, (load.get(shopId) ?? 0) + 1);
+    if (queue.length === 0) queues.delete(shopId);
+  }
+  return order;
+}
+
+/**
+ * Rough wait before a waiting call gets a line. `position` is its place in `dialOrder` (0 = next).
+ * Calls that fit in the free lines start now; the rest wait one average call per round of lines.
+ */
+export function estimatedWaitSeconds(position: number, input: { lines: number; freeLines: number; avgCallSeconds: number }): number {
+  if (position < input.freeLines) return 0;
+  return (Math.floor((position - input.freeLines) / input.lines) + 1) * input.avgCallSeconds;
+}
+
+const normalizeItems = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+/**
+ * Compares a row read from a khata photo with the entries already saved for that customer.
+ * - Same date and amount: the page was photographed before ("duplicate").
+ * - Same date, and the same items or an amount that matches what was crossed out on the page:
+ *   the shopkeeper changed the entry ("changed").
+ * The shopkeeper confirms either way; this only picks the default.
+ */
+export function matchSavedEntry<E extends Pick<LedgerEntry, "date" | "amount" | "items">>(
+  row: { date: string; amount: number; items: string; struckAmount?: number },
+  saved: E[],
+): { kind: "duplicate" | "changed"; entry: E } | undefined {
+  const sameDay = saved.filter((e) => e.date === row.date);
+  const duplicate = sameDay.find((e) => e.amount === row.amount);
+  if (duplicate) return { kind: "duplicate", entry: duplicate };
+  const items = normalizeItems(row.items);
+  const changed = sameDay.find((e) => e.amount === row.struckAmount || (items !== "" && normalizeItems(e.items) === items));
+  return changed ? { kind: "changed", entry: changed } : undefined;
 }
 
 const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });

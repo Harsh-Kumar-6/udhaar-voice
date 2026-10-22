@@ -5,11 +5,13 @@ import {
   canRemind,
   confidenceLabel,
   customerStatus,
+  dialOrder,
+  estimatedWaitSeconds,
   formatINR,
   isPromiseBroken,
   isWithinCallingHours,
   maskPhone,
-  nextAllowedTime,
+  matchSavedEntry,
   normalizeIndianMobile,
   toDateKey,
   upiLink,
@@ -75,16 +77,6 @@ describe("calling hours", () => {
   it("blocks calls at the end hour and before the start", () => {
     expect(isWithinCallingHours(at("2026-10-21T19:00:00"), hours)).toBe(false);
     expect(isWithinCallingHours(at("2026-10-21T07:59:00"), hours)).toBe(false);
-  });
-  it("moves early calls to the same morning", () => {
-    expect(nextAllowedTime(at("2026-10-21T06:30:00"), hours)).toEqual(at("2026-10-21T08:00:00"));
-  });
-  it("moves late calls to the next morning, across month ends", () => {
-    expect(nextAllowedTime(at("2026-10-31T21:15:00"), hours)).toEqual(at("2026-11-01T08:00:00"));
-  });
-  it("keeps calls already inside the window", () => {
-    const t = at("2026-10-21T10:15:00");
-    expect(nextAllowedTime(t, hours)).toBe(t);
   });
 });
 
@@ -180,5 +172,50 @@ describe("buildMemory", () => {
   });
   it("says so when there is no history", () => {
     expect(buildMemory({ promises: [], disputes: [], notes: [] }, now, fmt)).toBe("No previous calls.");
+  });
+});
+
+describe("dialOrder", () => {
+  const call = (id: string, shopId: string, minute: number) => ({ id, shopId, scheduledAt: `2026-10-21T10:${String(minute).padStart(2, "0")}:00.000Z` });
+
+  it("takes turns between shops instead of serving one shop's batch first", () => {
+    const waiting = [call("a1", "A", 0), call("a2", "A", 1), call("a3", "A", 2), call("b1", "B", 5)];
+    expect(dialOrder(waiting, []).map((c) => c.id)).toEqual(["a1", "b1", "a2", "a3"]);
+  });
+  it("gives the next line to the shop with fewer calls already on the line", () => {
+    const waiting = [call("a1", "A", 0), call("b1", "B", 5)];
+    expect(dialOrder(waiting, [{ shopId: "A" }]).map((c) => c.id)).toEqual(["b1", "a1"]);
+  });
+  it("serves a shop's own calls in the order they were scheduled", () => {
+    expect(dialOrder([call("late", "A", 9), call("early", "A", 1)], []).map((c) => c.id)).toEqual(["early", "late"]);
+  });
+});
+
+describe("estimatedWaitSeconds", () => {
+  const lines = { lines: 2, avgCallSeconds: 90 };
+  it("is zero while a line is free", () => {
+    expect(estimatedWaitSeconds(0, { ...lines, freeLines: 1 })).toBe(0);
+  });
+  it("adds one average call for each round of lines ahead", () => {
+    expect(estimatedWaitSeconds(0, { ...lines, freeLines: 0 })).toBe(90);
+    expect(estimatedWaitSeconds(1, { ...lines, freeLines: 0 })).toBe(90);
+    expect(estimatedWaitSeconds(2, { ...lines, freeLines: 0 })).toBe(180);
+  });
+});
+
+describe("matchSavedEntry", () => {
+  const saved = [{ id: "e1", date: "2026-10-20", amount: 120, items: "Rice 2 kg" }];
+  it("spots a row that was saved before", () => {
+    expect(matchSavedEntry({ date: "2026-10-20", amount: 120, items: "rice 2kg" }, saved)?.kind).toBe("duplicate");
+  });
+  it("spots a changed amount by the same items", () => {
+    expect(matchSavedEntry({ date: "2026-10-20", amount: 150, items: "Rice, 2 kg" }, saved)).toEqual({ kind: "changed", entry: saved[0] });
+  });
+  it("spots a changed amount by what was crossed out", () => {
+    expect(matchSavedEntry({ date: "2026-10-20", amount: 150, items: "চাল", struckAmount: 120 }, saved)?.kind).toBe("changed");
+  });
+  it("treats other days and other items as new", () => {
+    expect(matchSavedEntry({ date: "2026-10-21", amount: 120, items: "Rice 2 kg" }, saved)).toBeUndefined();
+    expect(matchSavedEntry({ date: "2026-10-20", amount: 40, items: "Milk" }, saved)).toBeUndefined();
   });
 });

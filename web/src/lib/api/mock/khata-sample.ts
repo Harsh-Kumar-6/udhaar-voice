@@ -4,22 +4,24 @@
  */
 
 export type SampleLine = {
-  /** As written in the ledger (what the photo shows). */
-  written: { name: string; items: string; amount: string; date: string };
+  /** As written in the ledger (what the photo shows). `struck` is an amount crossed out and written over. */
+  written: { name: string; items: string; amount: string; date: string; struck?: string };
   /** What the model read, in Latin script for the app. */
   name: string;
   nameNative: string;
   items: string;
   amount: number;
+  /** The crossed-out amount, as the model read it. */
+  struckAmount?: number;
   daysAgo: number;
   confidence: { name: number; amount: number; date: number; items: number };
 };
 
 export const SAMPLE_KHATA: SampleLine[] = [
   {
-    written: { name: "রমেশ", items: "চাল ২ কেজি", amount: "১৫০/-", date: "২০/১০" },
-    name: "Ramesh", nameNative: "রমেশ", items: "Rice 2 kg", amount: 150, daysAgo: 1,
-    confidence: { name: 0.95, amount: 0.97, date: 0.9, items: 0.88 },
+    written: { name: "রমেশ", items: "চাল ২ কেজি", amount: "১৫০/-", date: "২০/১০", struck: "১২০" },
+    name: "Ramesh", nameNative: "রমেশ", items: "Rice 2 kg", amount: 150, struckAmount: 120, daysAgo: 1,
+    confidence: { name: 0.95, amount: 0.84, date: 0.9, items: 0.88 },
   },
   {
     written: { name: "সুনীতা", items: "দুধ", amount: "৪০/-", date: "২১/১০" },
@@ -42,8 +44,8 @@ export const SAMPLE_KHATA: SampleLine[] = [
     confidence: { name: 0.94, amount: 0.9, date: 0.93, items: 0.95 },
   },
   {
-    written: { name: "হারু কাকা", items: "তেল ১ লি.", amount: "৩০০/-", date: "২০/১০" },
-    name: "Haru Kaka", nameNative: "হারু কাকা", items: "Mustard oil 1 L", amount: 300, daysAgo: 1,
+    written: { name: "হারু কাকা", items: "তেল ১ লি.", amount: "৩০০/-", date: "২০/১০", struck: "২৫০" },
+    name: "Haru Kaka", nameNative: "হারু কাকা", items: "Mustard oil 1 L", amount: 300, struckAmount: 250, daysAgo: 1,
     confidence: { name: 0.81, amount: 0.93, date: 0.7, items: 0.86 },
   },
 ];

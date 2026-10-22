@@ -10,7 +10,7 @@ export const reminders = {
   later: "Later",
   date: "Date",
   time: "Time",
-  outsideHours: (time: string) => `That's outside calling hours, so these calls will go out at ${time}.`,
+  outsideHours: (start: string, end: string) => `That's outside calling hours (${start}–${end}). Pick a time inside them.`,
   bypass: "Call anyway (demo only)",
   bypassHint: "Mirrors Bolna's bypass_call_guardrails. Never use it with real customers.",
   estimate: (calls: number, minutes: number, cost: string) => `${calls} ${calls === 1 ? "call" : "calls"} · about ${minutes} min · ≈ ${cost} of credit`,
@@ -25,6 +25,8 @@ export const reminders = {
   counts: (waiting: number, active: number, done: number) => `${waiting} waiting · ${active} on a call · ${done} done`,
   cancel: "Cancel waiting calls",
   cancelled: "Waiting calls cancelled",
+  inLine: (n: number) => `No. ${n} in line`,
+  linesBusy: (lines: number, wait: string) => `All ${lines} calling lines are busy. The next call starts in ${wait}.`,
   hideCalls: "Hide calls",
   showCalls: (n: number) => `Show ${n} ${n === 1 ? "call" : "calls"}`,
 };

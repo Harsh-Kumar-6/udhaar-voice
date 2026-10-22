@@ -17,7 +17,7 @@ export const common = {
   } satisfies Record<CustomerStatus, string>,
   callStatus: {
     scheduled: "Scheduled",
-    queued: "Queued",
+    queued: "Waiting for a line",
     ringing: "Ringing",
     in_progress: "On the call",
     completed: "Completed",
@@ -71,5 +71,7 @@ export const common = {
     pending: "The transcript arrives when the call ends.",
     none: "No conversation: the call wasn't answered.",
   },
+  /** Rough waits, e.g. for a free calling line. */
+  wait: (seconds: number) => (seconds < 60 ? "under a minute" : `about ${Math.round(seconds / 60)} min`),
   theme: { light: "Light", dark: "Dark", system: "System", label: "Theme" },
 };

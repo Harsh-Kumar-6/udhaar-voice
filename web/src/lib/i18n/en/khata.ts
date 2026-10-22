@@ -16,17 +16,44 @@ export const khata = {
     newCustomer: "New customer",
     phonePlaceholder: "Mobile number (optional)",
     lowConfidence: (pct: number) => `Hard to read (${pct}% sure). Please check.`,
-    summary: (rows: number, total: string, fresh: number) => `${rows} ${rows === 1 ? "entry" : "entries"} · ${total}${fresh ? ` · ${fresh} new ${fresh === 1 ? "customer" : "customers"}` : ""}`,
+    summary: (added: number, updated: number, total: string, fresh: number) =>
+      [
+        `${added} new ${added === 1 ? "entry" : "entries"}`,
+        updated ? `${updated} updated` : "",
+        total,
+        fresh ? `${fresh} new ${fresh === 1 ? "customer" : "customers"}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    struck: (amount: string) => `${amount} was crossed out and written over. Check the new amount.`,
+    struckShort: "crossed out",
+    savedDuplicate: "Already in your khata",
+    savedChanged: (from: string, to: string) => `Changed on the page: ${from} → ${to}`,
+    actions: { update: "Update", add: "Add", addNew: "Add as new", addAgain: "Add again", skip: "Skip" },
     save: "Save to khata",
-    startOver: "Start over",
+    startOver: "Discard and start over",
     invalidPhone: "That doesn't look like an Indian mobile number.",
   },
   saved: {
     title: "Saved to your khata",
-    body: (entries: number, fresh: number) => `${entries} ${entries === 1 ? "entry" : "entries"} added${fresh ? `, ${fresh} new ${fresh === 1 ? "customer" : "customers"}` : ""}.`,
+    body: (added: number, updated: number, fresh: number) =>
+      `${added} ${added === 1 ? "entry" : "entries"} added${updated ? `, ${updated} updated` : ""}${fresh ? `, ${fresh} new ${fresh === 1 ? "customer" : "customers"}` : ""}.`,
     another: "Snap another page",
     remind: "Schedule reminders",
     noPhone: "New customers without a phone number can't be called until you add one.",
+  },
+  undo: {
+    button: "Undo this import",
+    short: "Undo",
+    confirm: "Remove what this photo added and put changed amounts back?",
+    yes: "Yes, undo",
+    no: "Keep it",
+    done: (removed: number, restored: number) => `Import undone: ${removed} removed${restored ? `, ${restored} put back` : ""}`,
+  },
+  recent: {
+    title: "Recent photo imports",
+    description: "Saved the wrong page? Undo the whole import at once.",
+    item: (added: number, updated: number, amount: string) => `${added} added${updated ? ` · ${updated} updated` : ""} · ${amount}`,
   },
   sampleCaption: "Sample khata page",
 };

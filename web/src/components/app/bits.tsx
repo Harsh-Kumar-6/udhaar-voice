@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDistanceToNowStrict } from "date-fns";
+import { format, formatDistanceToNowStrict } from "date-fns";
 import { AlertTriangle, Inbox, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,9 @@ import { useT } from "@/lib/i18n";
 import { useNow } from "@/hooks/use-now";
 
 /* ---------- money, phone, language ---------- */
+
+/** "8 AM", for calling hours. */
+export const hourLabel = (h: number) => format(new Date(2026, 0, 1, h), "h a");
 
 export function Money({ amount, className }: { amount: number; className?: string }) {
   return <span className={cn("tabular font-mono", className)}>{formatINR(amount)}</span>;

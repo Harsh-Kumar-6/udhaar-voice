@@ -8,9 +8,11 @@ import type { MockDb } from "./types";
  * so the demo always looks current. Phone numbers are fake and always shown masked.
  */
 
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 export const SHOP_ID = "s1";
 export const COST_PER_MINUTE_USD = 0.06;
+/** Calls that can be on the line at once, across every shop. Bolna trial accounts allow 2, paid accounts start at 10. */
+export const CALL_LINES = 2;
 
 type SeedCustomer = {
   id: string;
@@ -24,8 +26,9 @@ type SeedCustomer = {
 };
 
 const CUSTOMERS: SeedCustomer[] = [
+  // Ramesh's rice entry from yesterday is overwritten on the sample khata page (₹120 → ₹150).
   { id: "c01", name: "Ramesh Yadav", nameNative: "रमेश यादव", language: "hi", persona: "promise",
-    entries: [[200, "Groceries", 30], [120, "Rice 2 kg, mustard oil", 18], [230, "Atta 5 kg, sugar 1 kg", 9]], payments: [[200, "upi", 25]] },
+    entries: [[200, "Groceries", 30], [120, "Rice 2 kg", 1], [230, "Atta 5 kg, sugar 1 kg", 9]], payments: [[200, "upi", 25]] },
   { id: "c02", name: "Sunita Das", nameNative: "সুনীতা দাস", language: "bn", persona: "salary",
     entries: [[1240, "Milk for the month (31 × ₹40)", 5]] },
   { id: "c03", name: "Bapi Mondal", nameNative: "বাপি মণ্ডল", language: "bn", persona: "callback",
@@ -153,6 +156,7 @@ export function createSeed(now: Date = new Date()): MockDb {
     notes: [],
     calls: [],
     batches: [],
+    imports: [],
     personas: Object.fromEntries(CUSTOMERS.map((c) => [c.id, c.persona])),
     plans: {},
     demo: { speed: 2, tryCalls: {} },

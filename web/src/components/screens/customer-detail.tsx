@@ -26,6 +26,7 @@ import {
   MaskedPhone,
   Money,
   OutcomeBadge,
+  hourLabel,
   StatusChip,
   TimeAgo,
 } from "@/components/app/bits";
@@ -220,9 +221,9 @@ function CustomerActions({ d }: { d: CustomerDetail }) {
 
   const callNow = async () => {
     const r = await schedule.mutateAsync({ customerIds: [d.customer.id], at: "now", language: "auto", bypassHours: shop.data?.demoBypassHours ?? false });
+    if (r.outsideHours) return toast.error(c.outsideHours(hourLabel(r.outsideHours.start), hourLabel(r.outsideHours.end)));
     if (!r.batch) return toast.error(r.skipped[0]?.reason ?? "Couldn't schedule the call");
-    if (r.movedTo) toast.info(c.callMoved(format(parseISO(r.movedTo), "EEE h:mm a")));
-    else toast.success(c.callScheduled(d.customer.name));
+    toast.success(c.callScheduled(d.customer.name));
     router.push(`/app/calls/${r.batch.callIds[0]}`);
   };
 

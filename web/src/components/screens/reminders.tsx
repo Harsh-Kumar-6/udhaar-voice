@@ -10,6 +10,7 @@ import {
   CustomerName,
   EmptyState,
   ErrorBlock,
+  hourLabel,
   LoadingBlock,
   Money,
   OutcomeBadge,
@@ -27,14 +28,13 @@ import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import type { BatchSummary, EligibleCustomer } from "@/lib/api/contract";
 import { useApiMutation, useBatches, useReminderCandidates, useShop } from "@/lib/api/hooks";
-import { isWithinCallingHours, nextAllowedTime, toDateKey } from "@/lib/domain/rules";
+import { isWithinCallingHours, toDateKey } from "@/lib/domain/rules";
 import type { CallOutcome } from "@/lib/domain/types";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 const MINUTES_PER_CALL = 2;
 const USD_PER_MINUTE = 0.06;
-const hourLabel = (h: number) => format(new Date(2026, 0, 1, h), "h a");
 
 export function RemindersScreen() {
   const t = useT().reminders;
@@ -74,7 +74,7 @@ function NewBatch() {
   const eligible = q.data.filter((c) => c.eligible);
   const requested = mode === "now" ? new Date() : new Date(`${date}T${time}`);
   const outside = !isWithinCallingHours(requested, hours);
-  const movedTo = outside && !bypass ? nextAllowedTime(requested, hours) : null;
+  const blocked = outside && !bypass;
   const count = [...selected].filter((id) => eligible.some((c) => c.customer.id === id)).length;
   const minutes = count * MINUTES_PER_CALL;
 
@@ -93,6 +93,7 @@ function NewBatch() {
       language: "auto",
       bypassHours: bypass,
     });
+    if (r.outsideHours) return toast.error(t.outsideHours(hourLabel(r.outsideHours.start), hourLabel(r.outsideHours.end)));
     if (r.batch) toast.success(t.scheduled(r.batch.callIds.length), { description: r.skipped.length ? t.skipped(r.skipped.length) : undefined });
     else toast.error(r.skipped[0]?.reason ?? "Nothing scheduled");
     setSelected(new Set());
@@ -159,10 +160,10 @@ function NewBatch() {
           ) : null}
           {outside ? (
             <div className="space-y-3 rounded-lg border border-promised/40 bg-promised-soft/60 p-3 text-sm">
-              {movedTo ? (
-                <p className="flex gap-2">
+              {blocked ? (
+                <p className="flex gap-2 font-medium">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0 text-promised" />
-                  {t.outsideHours(format(movedTo, "EEE d MMM, h:mm a"))}
+                  {t.outsideHours(hourLabel(hours.start), hourLabel(hours.end))}
                 </p>
               ) : null}
               <label className="flex items-start gap-3">
@@ -183,7 +184,7 @@ function NewBatch() {
               <Info className="size-3.5" /> {t.estimateHint}
             </p>
           </div>
-          <Button size="lg" onClick={submit} disabled={count === 0 || schedule.isPending}>
+          <Button size="lg" onClick={submit} disabled={count === 0 || blocked || schedule.isPending}>
             <PhoneCall /> {t.schedule(count)}
           </Button>
         </div>
@@ -240,11 +241,12 @@ function Batches() {
 }
 
 function BatchCard({ b }: { b: BatchSummary }) {
-  const t = useT().reminders;
+  const { reminders: t, common } = useT();
   const cancel = useApiMutation(api.cancelBatch);
   const active = b.batch.status === "scheduled" || b.batch.status === "running";
   const [open, setOpen] = useState(active);
   const total = b.calls.length;
+  const next = b.calls.flatMap((x) => (x.queue ? [x.queue] : [])).sort((a, z) => a.position - z.position)[0];
   const statusTone =
     b.batch.status === "running" ? "bg-paid-soft text-paid" : b.batch.status === "scheduled" ? "bg-callback-soft text-callback" : "bg-muted text-muted-foreground";
 
@@ -254,6 +256,7 @@ function BatchCard({ b }: { b: BatchSummary }) {
         <div>
           <p className="font-medium">{t.batchTitle(format(parseISO(b.batch.scheduledAt), "EEE d MMM, h:mm a"))}</p>
           <p className="text-xs text-muted-foreground">{t.counts(b.counts.waiting, b.counts.active, b.counts.done)}</p>
+          {next && next.waitSeconds > 0 ? <p className="text-xs font-medium text-promised">{t.linesBusy(next.lines, common.wait(next.waitSeconds))}</p> : null}
         </div>
         <span className={cn("inline-flex h-6 items-center rounded-full px-2.5 text-xs font-semibold", statusTone)}>{t.batchStatus[b.batch.status]}</span>
       </div>
@@ -288,10 +291,13 @@ function BatchCard({ b }: { b: BatchSummary }) {
       </div>
       {open ? (
         <ul className="divide-y rounded-lg border">
-          {b.calls.map(({ call, customer }) => (
+          {b.calls.map(({ call, customer, queue }) => (
             <li key={call.id}>
               <Link href={`/app/calls/${call.id}`} className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-muted/40">
-                <span className="truncate">{customer?.name ?? "Shopkeeper"}</span>
+                <span className="truncate">
+                  {customer?.name ?? "Shopkeeper"}
+                  {queue ? <span className="ml-2 text-xs text-muted-foreground">{t.inLine(queue.position)}</span> : null}
+                </span>
                 {call.status === "completed" && call.extraction ? <OutcomeBadge outcome={call.extraction.outcome} /> : <CallStatusPill status={call.status} />}
               </Link>
             </li>

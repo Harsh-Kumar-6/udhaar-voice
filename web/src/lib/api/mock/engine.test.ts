@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { answerQuestion } from "./assistant";
 import { scheduleInDb, tick } from "./engine";
-import { candidates, dailyReport, dashboard, graph, summaries } from "./queries";
+import { callItems, candidates, dailyReport, dashboard, graph, summaries } from "./queries";
 import { createSeed } from "./seed";
 import type { MockDb } from "./types";
 
@@ -70,11 +70,13 @@ describe("who can be called", () => {
     expect(eligibility(fresh(), "c08")?.reason).toMatch(/settle in person/);
   });
 
-  it("moves calls requested outside calling hours to the next morning", () => {
+  it("schedules nothing outside calling hours, so the shopkeeper can pick another time", () => {
     const db = fresh();
     const evening = new Date("2026-10-21T20:30:00");
     const r = scheduleInDb(db, { customerIds: ["c01"], at: evening.toISOString(), language: "auto", bypassHours: false }, NOW);
-    expect(r.movedTo).toBe(new Date("2026-10-22T08:00:00").toISOString());
+    expect(r.batch).toBeUndefined();
+    expect(r.outsideHours).toEqual(db.shop.callingHours);
+    expect(db.calls.some((k) => k.status === "scheduled")).toBe(false);
   });
 });
 
@@ -112,7 +114,7 @@ describe("simulated batch", () => {
     expect(after("c01")?.reason).toMatch(/^Reminded/); // Ramesh answered and promised
   });
 
-  it("never runs more than 3 calls at once", () => {
+  it("never has more than 2 calls on the line, and tells waiting calls their place in line", () => {
     const db = fresh();
     const ids = candidates(db, NOW).filter((c) => c.eligible).map((c) => c.customer.id);
     scheduleInDb(db, { customerIds: ids, at: "now", language: "auto", bypassHours: false }, NOW);
@@ -120,7 +122,9 @@ describe("simulated batch", () => {
     for (let i = 0; i < 300; i++) {
       t += 1000;
       tick(db, new Date(t));
-      expect(db.calls.filter((k) => k.status === "ringing" || k.status === "in_progress").length).toBeLessThanOrEqual(3);
+      expect(db.calls.filter((k) => k.status === "ringing" || k.status === "in_progress").length).toBeLessThanOrEqual(2);
+      const waiting = callItems(db).filter((x) => x.call.status === "queued");
+      expect(waiting.map((x) => x.queue?.position).sort()).toEqual(waiting.map((_, i) => i + 1));
     }
   });
 });

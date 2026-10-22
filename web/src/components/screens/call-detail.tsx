@@ -19,7 +19,7 @@ import { Transcript } from "@/components/app/transcript";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCall } from "@/lib/api/hooks";
-import type { CallDetail } from "@/lib/api/contract";
+import type { CallDetail, QueueSpot } from "@/lib/api/contract";
 import type { Call } from "@/lib/domain/types";
 import { useNow } from "@/hooks/use-now";
 import { useT } from "@/lib/i18n";
@@ -77,7 +77,7 @@ function CallView({ d }: { d: CallDetail }) {
         ) : null}
       </div>
 
-      {live ? <LivePanel call={call} /> : null}
+      {live ? <LivePanel call={call} queue={d.queue} /> : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -149,8 +149,9 @@ function CallView({ d }: { d: CallDetail }) {
   );
 }
 
-function LivePanel({ call }: { call: Call }) {
-  const c = useT().calls.detail.live;
+function LivePanel({ call, queue }: { call: Call; queue?: QueueSpot }) {
+  const { calls, common } = useT();
+  const c = calls.detail.live;
   const now = useNow(500);
   const since = call.status === "in_progress" ? call.answeredAt : call.startedAt;
   const elapsed = since ? Math.max(0, (now - Date.parse(since)) / 1000) : 0;
@@ -171,6 +172,12 @@ function LivePanel({ call }: { call: Call }) {
       <div className="font-heading text-xl font-bold">{label}</div>
       {call.status === "ringing" || call.status === "in_progress" ? (
         <div className="font-mono text-3xl font-semibold tabular">{formatDuration(Math.floor(elapsed)) === "—" ? "0:00" : formatDuration(Math.floor(elapsed))}</div>
+      ) : null}
+      {queue ? (
+        <div className="space-y-1">
+          <p className="font-medium">{c.inLine(queue.position, common.wait(queue.waitSeconds))}</p>
+          {queue.busyLines >= queue.lines ? <p className="max-w-md text-sm text-muted-foreground">{c.linesBusy(queue.lines)}</p> : null}
+        </div>
       ) : null}
       <p className="max-w-md text-sm text-muted-foreground">{c.note}</p>
     </div>

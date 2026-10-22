@@ -1,9 +1,11 @@
 import type {
   Call,
+  CallingHours,
   CallOutcome,
   Customer,
   CustomerStatus,
   Dispute,
+  KhataImport,
   Language,
   LedgerEntry,
   Note,
@@ -42,7 +44,20 @@ export type CustomerDetail = CustomerSummary & {
   paysFor: Customer[];
 };
 
-export type CallListItem = { call: Call; customer?: Customer };
+/**
+ * Where a call waiting for a free line stands. Lines are shared by every shop on our Bolna account
+ * (2 on a trial account), so a call can wait even when its own shop has nothing else running.
+ */
+export type QueueSpot = {
+  /** 1 = next to get a line. */
+  position: number;
+  lines: number;
+  busyLines: number;
+  /** Rough estimate. */
+  waitSeconds: number;
+};
+
+export type CallListItem = { call: Call; customer?: Customer; queue?: QueueSpot };
 export type CallDetail = CallListItem & { batch?: ReminderBatch };
 
 export type BatchSummary = {
@@ -104,7 +119,13 @@ export type GraphEdgeKind = "owes" | "promised" | "disputed" | "said" | "asked_f
 export type GraphEdge = { id: string; source: string; target: string; kind: GraphEdgeKind };
 export type GraphData = { nodes: GraphNode[]; edges: GraphEdge[] };
 
-export type KhataField<T> = { value: T; confidence: number };
+export type KhataField<T> = {
+  value: T;
+  confidence: number;
+  /** What was crossed out on the page; `value` is what was written over it. */
+  struck?: T;
+};
+export type KhataRowAction = "add" | "update" | "skip";
 export type KhataRow = {
   id: string;
   name: KhataField<string>;
@@ -116,9 +137,15 @@ export type KhataRow = {
   matchCustomerId?: string;
   phone?: string;
   language: Language;
-  include: boolean;
+  /** A saved entry this row repeats ("duplicate") or changes ("changed"). */
+  saved?: { kind: "duplicate" | "changed"; entryId: string; amount: number; items: string };
+  /** What saving does with the row: add a new entry, update `saved`, or nothing. */
+  action: KhataRowAction;
 };
 export type KhataExtraction = { scanId: string; source: "sample" | "upload"; rows: KhataRow[] };
+export type KhataSaveResult = { importId: string; added: number; updated: number; newCustomers: number };
+export type KhataImportSummary = { import: KhataImport; added: number; updated: number; amount: number };
+export type KhataUndoResult = { removed: number; restored: number; customersRemoved: number };
 
 export type AskAnswer = {
   question: string;
@@ -139,8 +166,8 @@ export type ScheduleInput = {
 export type ScheduleResult = {
   batch?: ReminderBatch;
   skipped: { customer: Customer; reason: string }[];
-  /** Set when the requested time was outside calling hours and the batch was moved. */
-  movedTo?: string;
+  /** Set when the requested time is outside calling hours. Nothing is scheduled; the shopkeeper picks another time. */
+  outsideHours?: CallingHours;
 };
 
 export type EligibleCustomer = CustomerSummary & {
@@ -174,7 +201,11 @@ export interface UdhaarApi {
   cancelBatch(id: string): Promise<void>;
 
   extractKhata(input: { source: "sample" | "upload"; fileName?: string }): Promise<KhataExtraction>;
-  saveKhata(rows: KhataRow[]): Promise<{ entries: number; newCustomers: number }>;
+  saveKhata(input: { scanId: string; source: KhataExtraction["source"]; rows: KhataRow[] }): Promise<KhataSaveResult>;
+  /** Recent photo imports, newest first. */
+  listKhataImports(): Promise<KhataImportSummary[]>;
+  /** Removes what an import added and restores what it changed. Customers it created go too, unless they have other records. */
+  undoKhataImport(id: string): Promise<KhataUndoResult>;
 
   ask(question: string): Promise<AskAnswer>;
   getDashboard(): Promise<DashboardData>;
