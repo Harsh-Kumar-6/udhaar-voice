@@ -5,6 +5,8 @@ import {
   canRemind,
   confidenceLabel,
   customerStatus,
+  dialOrder,
+  estimatedWaitSeconds,
   formatINR,
   isPromiseBroken,
   nextReminderDate,
@@ -24,8 +26,10 @@ import type {
   GraphData,
   GraphEdge,
   GraphNode,
+  QueueSpot,
 } from "../contract";
 import { buildReportScript } from "./scripts";
+import { CALL_LINES } from "./seed";
 import type { MockDb } from "./types";
 
 /** MOCK ONLY. Read-only views over the demo database. The real backend will run these as SQL. */
@@ -127,16 +131,38 @@ export function candidates(db: MockDb, now: Date): EligibleCustomer[] {
   });
 }
 
+/** A typical reminder call, for wait estimates. */
+const AVG_CALL_SECONDS = 90;
+
+/** Place in line for every call waiting for a free line, in the order the engine will dial them. */
+function queueSpots(db: MockDb): Map<string, QueueSpot> {
+  const onLine = db.calls.filter((k) => k.status === "ringing" || k.status === "in_progress");
+  const order = dialOrder(db.calls.filter((k) => k.status === "queued"), onLine);
+  const freeLines = Math.max(0, CALL_LINES - onLine.length);
+  // Simulated calls play faster than real ones; scale the estimate to match.
+  const avgCallSeconds = AVG_CALL_SECONDS / Math.max(0.5, db.demo.speed);
+  return new Map(
+    order.map((call, i) => [
+      call.id,
+      { position: i + 1, lines: CALL_LINES, busyLines: onLine.length, waitSeconds: estimatedWaitSeconds(i, { lines: CALL_LINES, freeLines, avgCallSeconds }) },
+    ]),
+  );
+}
+
+function listItem(db: MockDb, call: Call, spots: Map<string, QueueSpot>): CallListItem {
+  return { call, customer: db.customers.find((c) => c.id === call.customerId), queue: spots.get(call.id) };
+}
+
 export function callItems(db: MockDb): CallListItem[] {
-  return [...db.calls].sort(byNewest).map((call) => ({ call, customer: db.customers.find((c) => c.id === call.customerId) }));
+  const spots = queueSpots(db);
+  return [...db.calls].sort(byNewest).map((call) => listItem(db, call, spots));
 }
 
 export function callDetail(db: MockDb, id: string): CallDetail | null {
   const call = db.calls.find((k) => k.id === id);
   if (!call) return null;
   return {
-    call,
-    customer: db.customers.find((c) => c.id === call.customerId),
+    ...listItem(db, call, queueSpots(db)),
     batch: call.batchId ? db.batches.find((b) => b.id === call.batchId) : undefined,
   };
 }
@@ -144,10 +170,11 @@ export function callDetail(db: MockDb, id: string): CallDetail | null {
 export function batchSummary(db: MockDb, batchId: string): BatchSummary | null {
   const batch = db.batches.find((b) => b.id === batchId);
   if (!batch) return null;
+  const spots = queueSpots(db);
   const calls = batch.callIds
     .map((id) => db.calls.find((k) => k.id === id))
     .filter((k): k is Call => !!k)
-    .map((call) => ({ call, customer: db.customers.find((c) => c.id === call.customerId) }));
+    .map((call) => listItem(db, call, spots));
   const counts = { waiting: 0, active: 0, done: 0 };
   const outcomes: BatchSummary["outcomes"] = {};
   for (const { call } of calls) {

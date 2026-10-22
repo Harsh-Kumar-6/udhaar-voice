@@ -3,6 +3,7 @@ import type {
   Customer,
   Dispute,
   Extraction,
+  KhataImport,
   LedgerEntry,
   Note,
   Payment,
@@ -35,6 +36,7 @@ export type MockDb = {
   notes: Note[];
   calls: Call[];
   batches: ReminderBatch[];
+  imports: KhataImport[];
   /** How each sample customer behaves on a call. */
   personas: Record<string, Persona>;
   /** Pre-generated outcomes for calls that have not finished yet. */

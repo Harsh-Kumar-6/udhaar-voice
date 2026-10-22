@@ -1,7 +1,7 @@
 import { addDays } from "date-fns";
-import { normalizeIndianMobile, toDateKey } from "@/lib/domain/rules";
-import { Shop as ShopSchema, type Customer, type LedgerEntry, type Payment } from "@/lib/domain/types";
-import type { KhataExtraction, UdhaarApi } from "../contract";
+import { matchSavedEntry, normalizeIndianMobile, toDateKey } from "@/lib/domain/rules";
+import { Shop as ShopSchema, type Customer, type KhataImport, type LedgerEntry, type Payment } from "@/lib/domain/types";
+import type { KhataExtraction, KhataImportSummary, UdhaarApi } from "../contract";
 import { answerQuestion } from "./assistant";
 import { cancelBatchInDb, newId, scheduleInDb, scheduleReportCall } from "./engine";
 import { SAMPLE_KHATA } from "./khata-sample";
@@ -120,29 +120,43 @@ export const mockApi: UdhaarApi = {
       source,
       rows: SAMPLE_KHATA.map((line, i) => {
         const match = findCustomerByName(db, ` ${line.name.toLowerCase()} ${line.nameNative} `);
+        const date = toDateKey(addDays(now, -line.daysAgo));
+        const saved = match
+          ? matchSavedEntry(
+              { date, amount: line.amount, items: line.items, struckAmount: line.struckAmount },
+              db.entries.filter((e) => e.customerId === match.id),
+            )
+          : undefined;
         return {
           id: `row${i + 1}`,
           name: { value: line.name, confidence: line.confidence.name },
           nameNative: line.nameNative,
-          amount: { value: line.amount, confidence: line.confidence.amount },
-          date: { value: toDateKey(addDays(now, -line.daysAgo)), confidence: line.confidence.date },
+          amount: { value: line.amount, confidence: line.confidence.amount, struck: line.struckAmount },
+          date: { value: date, confidence: line.confidence.date },
           items: { value: line.items, confidence: line.confidence.items },
           matchCustomerId: match?.id,
           phone: match ? undefined : "",
           language: match?.language ?? "bn",
-          include: true,
+          saved: saved && { kind: saved.kind, entryId: saved.entry.id, amount: saved.entry.amount, items: saved.entry.items },
+          action: saved?.kind === "duplicate" ? "skip" : saved ? "update" : "add",
         };
       }),
     };
     return clone(result);
   },
 
-  saveKhata: (rows) =>
+  saveKhata: ({ source, rows }) =>
     write((db, now) => {
-      let entries = 0;
-      let newCustomers = 0;
+      const record: KhataImport = { id: newId("imp"), shopId: db.shop.id, source, createdAt: now.toISOString(), entryIds: [], customerIds: [], updates: [] };
       for (const row of rows) {
-        if (!row.include) continue;
+        if (row.action === "skip") continue;
+        const existing = row.action === "update" ? db.entries.find((e) => e.id === row.saved?.entryId) : undefined;
+        if (existing) {
+          record.updates.push({ entryId: existing.id, previous: { amount: existing.amount, items: existing.items } });
+          existing.amount = row.amount.value;
+          existing.items = row.items.value;
+          continue;
+        }
         let customerId = row.matchCustomerId;
         if (!customerId) {
           customerId = newId("c");
@@ -157,20 +171,61 @@ export const mockApi: UdhaarApi = {
             createdAt: now.toISOString(),
           });
           db.personas[customerId] = "promise";
-          newCustomers++;
+          record.customerIds.push(customerId);
         }
-        db.entries.push({
+        const entry: LedgerEntry = {
           id: newId("e"),
           customerId,
           amount: row.amount.value,
           items: row.items.value,
           date: row.date.value,
           source: "photo",
+          importId: record.id,
           createdAt: now.toISOString(),
-        });
-        entries++;
+        };
+        db.entries.push(entry);
+        record.entryIds.push(entry.id);
       }
-      return { entries, newCustomers };
+      db.imports.push(record);
+      return { importId: record.id, added: record.entryIds.length, updated: record.updates.length, newCustomers: record.customerIds.length };
+    }),
+
+  listKhataImports: () =>
+    read((db) =>
+      [...db.imports]
+        .filter((i) => !i.undoneAt)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, 5)
+        .map((i): KhataImportSummary => ({
+          import: i,
+          added: i.entryIds.length,
+          updated: i.updates.length,
+          amount: db.entries.filter((e) => e.importId === i.id).reduce((sum, e) => sum + e.amount, 0),
+        })),
+    ),
+
+  undoKhataImport: (id) =>
+    write((db, now) => {
+      const record = db.imports.find((i) => i.id === id);
+      if (!record || record.undoneAt) throw new Error("This import was already undone.");
+      const before = db.entries.length;
+      db.entries = db.entries.filter((e) => e.importId !== id);
+      let restored = 0;
+      for (const u of record.updates) {
+        const entry = db.entries.find((e) => e.id === u.entryId);
+        if (entry) {
+          Object.assign(entry, u.previous);
+          restored++;
+        }
+      }
+      // A customer this import created goes too, unless something else now refers to them.
+      const inUse = (cid: string) =>
+        [db.entries, db.payments, db.promises, db.disputes, db.notes, db.calls].some((rows) => rows.some((r: { customerId?: string }) => r.customerId === cid));
+      const removable = new Set(record.customerIds.filter((cid) => !inUse(cid)));
+      db.customers = db.customers.filter((c) => !removable.has(c.id));
+      for (const cid of removable) delete db.personas[cid];
+      record.undoneAt = now.toISOString();
+      return { removed: before - db.entries.length, restored, customersRemoved: removable.size };
     }),
 
   // The assistant can schedule calls, so it goes through `write`.

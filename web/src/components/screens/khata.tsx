@@ -1,6 +1,7 @@
 "use client";
 
-import { Camera, CheckCircle2, FileImage, Loader2, PhoneCall, RotateCcw } from "lucide-react";
+import { formatDistanceToNowStrict, parseISO } from "date-fns";
+import { Camera, CheckCircle2, FileImage, Loader2, PhoneCall, RotateCcw, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -10,10 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
-import type { KhataExtraction, KhataRow } from "@/lib/api/contract";
-import { useApiMutation, useCustomers } from "@/lib/api/hooks";
+import type { KhataExtraction, KhataRow, KhataRowAction, KhataSaveResult } from "@/lib/api/contract";
+import { useApiMutation, useCustomers, useKhataImports } from "@/lib/api/hooks";
 import { formatINR, normalizeIndianMobile } from "@/lib/domain/rules";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -22,7 +24,7 @@ type Stage =
   | { kind: "start" }
   | { kind: "reading"; source: "sample" | "upload"; imageUrl?: string }
   | { kind: "review"; source: "sample" | "upload"; imageUrl?: string; scan: KhataExtraction }
-  | { kind: "saved"; entries: number; newCustomers: number; withoutPhone: number };
+  | ({ kind: "saved"; withoutPhone: number } & KhataSaveResult);
 
 const LOW = 0.8;
 
@@ -81,7 +83,8 @@ export function KhataScreen() {
               <p className="rounded-lg bg-promised-soft px-3 py-2 text-xs text-promised">{t.start.prototypeNote}</p>
             </CardContent>
           </Card>
-          <figure className="space-y-2">
+          <RecentImports />
+          <figure className="space-y-2 lg:col-start-2 lg:row-span-2 lg:row-start-1">
             <SampleKhataPage />
             <figcaption className="text-center text-xs text-muted-foreground">{t.sampleCaption}</figcaption>
           </figure>
@@ -125,9 +128,10 @@ export function KhataScreen() {
             <CheckCircle2 className="size-12 text-paid" />
             <div className="space-y-1">
               <h2 className="text-xl font-bold">{t.saved.title}</h2>
-              <p className="text-muted-foreground">{t.saved.body(stage.entries, stage.newCustomers)}</p>
+              <p className="text-muted-foreground">{t.saved.body(stage.added, stage.updated, stage.newCustomers)}</p>
               {stage.withoutPhone ? <p className="text-sm text-promised">{t.saved.noPhone}</p> : null}
             </div>
+            <UndoImport importId={stage.importId} onUndone={() => setStage({ kind: "start" })} />
             <div className="flex flex-wrap justify-center gap-2">
               <Button size="lg" variant="outline" onClick={() => setStage({ kind: "start" })}>
                 <RotateCcw /> {t.saved.another}
@@ -166,7 +170,7 @@ function Review({
   scan: KhataExtraction;
   imageUrl?: string;
   onCancel: () => void;
-  onSaved: (r: { entries: number; newCustomers: number; withoutPhone: number }) => void;
+  onSaved: (r: KhataSaveResult & { withoutPhone: number }) => void;
 }) {
   const t = useT().khata.review;
   const customers = useCustomers();
@@ -176,17 +180,18 @@ function Review({
 
   const nameOf = (id?: string) => customers.data?.find((s) => s.customer.id === id)?.customer.name;
   const update = (id: string, patch: Partial<KhataRow>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  const included = rows.filter((r) => r.include);
-  const fresh = included.filter((r) => !r.matchCustomerId).length;
+  const included = rows.filter((r) => r.action !== "skip");
+  const added = included.filter((r) => r.action === "add");
+  const fresh = added.filter((r) => !r.matchCustomerId);
   const total = included.reduce((s, r) => s + r.amount.value, 0);
 
   const submit = async () => {
     const errors: Record<string, boolean> = {};
-    for (const r of included) if (!r.matchCustomerId && r.phone && !normalizeIndianMobile(r.phone)) errors[r.id] = true;
+    for (const r of fresh) if (r.phone && !normalizeIndianMobile(r.phone)) errors[r.id] = true;
     setPhoneErrors(errors);
     if (Object.keys(errors).length) return toast.error(t.invalidPhone);
-    const result = await save.mutateAsync(rows);
-    onSaved({ ...result, withoutPhone: included.filter((r) => !r.matchCustomerId && !r.phone).length });
+    const result = await save.mutateAsync({ scanId: scan.scanId, source: scan.source, rows });
+    onSaved({ ...result, withoutPhone: fresh.filter((r) => !r.phone).length });
   };
 
   return (
@@ -200,21 +205,24 @@ function Review({
         <CardContent className="space-y-4">
           <ul className="space-y-3">
             {rows.map((r) => (
-              <li key={r.id} className={cn("space-y-3 rounded-lg border p-3", !r.include && "opacity-50")}>
-                <div className="flex items-center justify-between gap-3">
+              <li key={r.id} className={cn("space-y-3 rounded-lg border p-3", r.action === "skip" && "opacity-60")}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <label className="flex items-center gap-2 text-sm font-medium">
-                    <Checkbox id={`include-${r.id}`} checked={r.include} onCheckedChange={(v) => update(r.id, { include: v === true })} />
+                    {r.saved ? null : (
+                      <Checkbox id={`include-${r.id}`} checked={r.action === "add"} onCheckedChange={(v) => update(r.id, { action: v === true ? "add" : "skip" })} />
+                    )}
                     {r.nameNative ? <span lang="bn">{r.nameNative}</span> : null}
                   </label>
                   <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold", r.matchCustomerId ? "bg-paid-soft text-paid" : "bg-callback-soft text-callback")}>
                     {r.matchCustomerId ? t.matches(nameOf(r.matchCustomerId) ?? r.name.value) : t.newCustomer}
                   </span>
                 </div>
+                {r.saved ? <SavedChoice row={r} onChange={(action) => update(r.id, { action })} /> : null}
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1.4fr_0.8fr_1fr]">
                   <Field label={t.columns.name} confidence={r.name.confidence} className="col-span-2 sm:col-span-1">
                     <Input id={`name-${r.id}`} value={r.name.value} disabled={!!r.matchCustomerId} onChange={(e) => update(r.id, { name: { value: e.target.value, confidence: 1 } })} />
                   </Field>
-                  <Field label={t.columns.amount} confidence={r.amount.confidence}>
+                  <Field label={t.columns.amount} confidence={r.amount.confidence} struck={r.amount.struck}>
                     <Input
                       id={`amount-${r.id}`}
                       inputMode="numeric"
@@ -228,7 +236,7 @@ function Review({
                   <Field label={t.columns.items} confidence={r.items.confidence} className="col-span-2 sm:col-span-3">
                     <Input id={`items-${r.id}`} value={r.items.value} onChange={(e) => update(r.id, { items: { value: e.target.value, confidence: 1 } })} />
                   </Field>
-                  {!r.matchCustomerId ? (
+                  {!r.matchCustomerId && r.action === "add" ? (
                     <div className="col-span-2 space-y-1 sm:col-span-3">
                       <Input
                         id={`phone-${r.id}`}
@@ -245,7 +253,7 @@ function Review({
             ))}
           </ul>
           <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-medium">{t.summary(included.length, formatINR(total), fresh)}</p>
+            <p className="text-sm font-medium">{t.summary(added.length, included.length - added.length, formatINR(total), fresh.length)}</p>
             <div className="flex gap-2">
               <Button variant="ghost" size="lg" onClick={onCancel}>
                 {t.startOver}
@@ -261,9 +269,106 @@ function Review({
   );
 }
 
-function Field({ label, confidence, className, children }: { label: string; confidence: number; className?: string; children: React.ReactNode }) {
+/** For a row that repeats or changes a saved entry: what saving should do with it. */
+function SavedChoice({ row, onChange }: { row: KhataRow; onChange: (action: KhataRowAction) => void }) {
   const t = useT().khata.review;
-  const low = confidence < LOW;
+  const saved = row.saved!;
+  const options: KhataRowAction[] = saved.kind === "changed" ? ["update", "add", "skip"] : ["skip", "add"];
+  return (
+    <div className="flex flex-col gap-2 rounded-md bg-muted/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-xs font-medium">
+        {saved.kind === "changed" ? t.savedChanged(formatINR(saved.amount), formatINR(row.amount.value)) : t.savedDuplicate}
+      </p>
+      <ToggleGroup type="single" variant="outline" size="sm" value={row.action} onValueChange={(v) => v && onChange(v as KhataRowAction)}>
+        {options.map((a) => (
+          <ToggleGroupItem key={a} value={a} id={`action-${row.id}-${a}`}>
+            {a === "add" ? (saved.kind === "changed" ? t.actions.addNew : t.actions.addAgain) : t.actions[a]}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </div>
+  );
+}
+
+function UndoImport({ importId, onUndone, compact = false }: { importId: string; onUndone?: () => void; compact?: boolean }) {
+  const t = useT().khata.undo;
+  const undo = useApiMutation(api.undoKhataImport);
+  const [confirming, setConfirming] = useState(false);
+  if (!confirming) {
+    return (
+      <Button variant={compact ? "ghost" : "outline"} size={compact ? "sm" : "lg"} onClick={() => setConfirming(true)}>
+        <Undo2 /> {compact ? t.short : t.button}
+      </Button>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm sm:flex-row">
+      <span>{t.confirm}</span>
+      <div className="flex gap-2">
+        <Button
+          variant="destructive"
+          size="sm"
+          disabled={undo.isPending}
+          onClick={async () => {
+            const r = await undo.mutateAsync(importId);
+            toast.success(t.done(r.removed, r.restored));
+            setConfirming(false);
+            onUndone?.();
+          }}
+        >
+          {t.yes}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+          {t.no}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function RecentImports() {
+  const t = useT().khata.recent;
+  const q = useKhataImports();
+  if (!q.data?.length) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t.title}</CardTitle>
+        <CardDescription>{t.description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="divide-y">
+          {q.data.map((i) => (
+            <li key={i.import.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <span className="text-sm">
+                <span className="font-medium">{formatDistanceToNowStrict(parseISO(i.import.createdAt), { addSuffix: true })}</span>
+                <span className="block text-xs text-muted-foreground">{t.item(i.added, i.updated, formatINR(i.amount))}</span>
+              </span>
+              <UndoImport importId={i.import.id} compact />
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Field({
+  label,
+  confidence,
+  struck,
+  className,
+  children,
+}: {
+  label: string;
+  confidence: number;
+  /** A crossed-out amount on the page; always worth a second look. */
+  struck?: number;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const t = useT().khata.review;
+  const low = confidence < LOW || struck !== undefined;
   const box = (
     <div className={cn("space-y-1", className)}>
       <span className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
@@ -271,13 +376,18 @@ function Field({ label, confidence, className, children }: { label: string; conf
         {low ? <span className="size-1.5 rounded-full bg-promised" aria-hidden /> : null}
       </span>
       <div className={cn(low && "rounded-md ring-2 ring-promised/70")}>{children}</div>
+      {struck !== undefined ? (
+        <span className="block text-[11px] text-promised">
+          <s>{formatINR(struck)}</s> {t.struckShort}
+        </span>
+      ) : null}
     </div>
   );
   if (!low) return box;
   return (
     <Tooltip>
       <TooltipTrigger asChild>{box}</TooltipTrigger>
-      <TooltipContent>{t.lowConfidence(Math.round(confidence * 100))}</TooltipContent>
+      <TooltipContent>{struck !== undefined ? t.struck(formatINR(struck)) : t.lowConfidence(Math.round(confidence * 100))}</TooltipContent>
     </Tooltip>
   );
 }

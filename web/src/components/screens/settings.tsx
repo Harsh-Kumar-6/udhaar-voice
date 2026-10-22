@@ -16,11 +16,13 @@ import { api, subscribeToDataChanges } from "@/lib/api";
 import { useApiMutation, useShop } from "@/lib/api/hooks";
 import { getSimulationSpeed, setSimulationSpeed, SPEEDS } from "@/lib/api/mock/controls";
 import { Shop as ShopSchema, type Language, type Shop } from "@/lib/domain/types";
-import { useT } from "@/lib/i18n";
+import { setAppLanguage, useAppLanguage, useT } from "@/lib/i18n";
 
 const HOURS = Array.from({ length: 25 }, (_, h) => h);
 const hourLabel = (h: number) => (h === 0 || h === 24 ? "12 AM" : h === 12 ? "12 PM" : h < 12 ? `${h} AM` : `${h - 12} PM`);
 const LANGS: Language[] = ["bn", "hi", "en"];
+/** Each language's name in its own script, so anyone can find theirs. */
+const LANGUAGE_NAMES: Record<Language, string> = { en: "English", bn: "বাংলা", hi: "हिन्दी" };
 
 export function SettingsScreen() {
   const t = useT().settings;
@@ -30,6 +32,7 @@ export function SettingsScreen() {
   return (
     <div className="space-y-6">
       <PageHeader title={t.title} description={t.description} />
+      <AppLanguage />
       <ShopForm key={JSON.stringify(q.data)} shop={q.data} />
       <PrototypeControls shop={q.data} />
       <About />
@@ -138,6 +141,28 @@ function ShopForm({ shop }: { shop: Shop }) {
         </Button>
       </div>
     </form>
+  );
+}
+
+function AppLanguage() {
+  const t = useT().settings.appLanguage;
+  const language = useAppLanguage();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t.title}</CardTitle>
+        <CardDescription>{t.hint}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ToggleGroup type="single" variant="outline" value={language} onValueChange={(v) => v && setAppLanguage(v as Language)}>
+          {(["en", "bn", "hi"] as const).map((l) => (
+            <ToggleGroupItem key={l} value={l} lang={l} id={`app-language-${l}`}>
+              {LANGUAGE_NAMES[l]}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </CardContent>
+    </Card>
   );
 }
 

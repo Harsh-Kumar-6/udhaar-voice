@@ -1,6 +1,10 @@
 export const settings = {
   title: "Settings",
   description: "Your shop, how Asha calls your customers, and the prototype controls.",
+  appLanguage: {
+    title: "App language",
+    hint: "The language of this app on this phone or computer. Calls use each customer's own language.",
+  },
   shop: {
     title: "Shop",
     name: "Shop name",

@@ -19,6 +19,8 @@ export const calls = {
     live: {
       scheduled: (when: string) => `Scheduled for ${when}`,
       queued: "Waiting for a free line…",
+      inLine: (n: number, wait: string) => `No. ${n} in line · should start in ${wait}`,
+      linesBusy: (lines: number) => `All ${lines} calling lines are busy with other calls. This one starts as soon as a line frees up.`,
       ringing: "Ringing…",
       in_progress: "On the call",
       note: "Bolna sends the transcript and the extracted result by webhook when the call ends.",

@@ -1,10 +1,9 @@
-import { format } from "date-fns";
-import { isPromiseBroken, isWithinCallingHours, nextAllowedTime } from "@/lib/domain/rules";
+import { dialOrder, isPromiseBroken, isWithinCallingHours } from "@/lib/domain/rules";
 import type { Call, CallStatus, Language, ReminderBatch, Turn } from "@/lib/domain/types";
 import type { ScheduleInput, ScheduleResult } from "../contract";
 import { candidates, customerDetail } from "./queries";
 import { buildReminderScript, transcriptSeconds } from "./scripts";
-import { COST_PER_MINUTE_USD } from "./seed";
+import { CALL_LINES, COST_PER_MINUTE_USD } from "./seed";
 import { commit, readDb } from "./store";
 import type { MockDb, SimPlan } from "./types";
 
@@ -13,8 +12,6 @@ import type { MockDb, SimPlan } from "./types";
  * When the real engine arrives, scheduling moves to the server and results come from webhooks.
  */
 
-/** Simultaneous calls. Bolna trial accounts allow 2, paid accounts start at 10. */
-export const MAX_ACTIVE_CALLS = 3;
 const RING_SECONDS = 6;
 const NO_ANSWER_SECONDS = 30;
 const ACTIVE: CallStatus[] = ["scheduled", "queued", "ringing", "in_progress"];
@@ -24,16 +21,12 @@ const iso = (d: Date) => d.toISOString();
 const costOf = (seconds: number) => Math.round((seconds / 60) * COST_PER_MINUTE_USD * 1000) / 1000;
 
 export function scheduleInDb(db: MockDb, input: ScheduleInput, now: Date): ScheduleResult {
-  const requested = input.at === "now" ? now : new Date(input.at);
+  const when = input.at === "now" ? now : new Date(input.at);
   const hours = db.shop.callingHours;
-  const inside = isWithinCallingHours(requested, hours);
-  const allowed = input.bypassHours || inside;
-  const when = allowed ? requested : nextAllowedTime(requested, hours);
-  const detail = !inside
-    ? input.bypassHours
-      ? "Outside calling hours: bypassed for this demo"
-      : `Requested time was outside calling hours (${hours.start}:00–${hours.end}:00); moved to ${format(when, "EEE d MMM, h:mm a")}`
-    : undefined;
+  const inside = isWithinCallingHours(when, hours);
+  // Outside calling hours nothing is scheduled: the shopkeeper picks another time.
+  if (!inside && !input.bypassHours) return { skipped: [], outsideHours: hours };
+  const detail = inside ? undefined : "Outside calling hours: bypassed for this demo";
 
   const pool = new Map(candidates(db, now).map((c) => [c.customer.id, c]));
   const skipped: ScheduleResult["skipped"] = [];
@@ -62,7 +55,7 @@ export function scheduleInDb(db: MockDb, input: ScheduleInput, now: Date): Sched
     createdAt: iso(now),
   };
   db.batches.push(batch);
-  return { batch, skipped, movedTo: allowed ? undefined : iso(when) };
+  return { batch, skipped };
 }
 
 function createReminderCall(
@@ -156,19 +149,18 @@ export function tick(db: MockDb, now: Date): boolean {
   for (const call of db.calls) {
     if (call.status === "scheduled" && Date.parse(call.scheduledAt) <= t) {
       call.status = "queued";
-      call.events.push({ at: iso(now), status: "queued", detail: "Handed to the call engine" });
+      call.events.push({ at: iso(now), status: "queued", detail: "Waiting for a free line" });
       changed = true;
     }
   }
 
-  let active = db.calls.filter((k) => k.status === "ringing" || k.status === "in_progress").length;
-  const queued = db.calls.filter((k) => k.status === "queued").sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
-  for (const call of queued) {
-    if (active >= MAX_ACTIVE_CALLS) break;
+  // Lines are shared by every shop on the account; dialOrder takes turns between shops.
+  const onLine = db.calls.filter((k) => k.status === "ringing" || k.status === "in_progress");
+  const waiting = db.calls.filter((k) => k.status === "queued");
+  for (const call of dialOrder(waiting, onLine).slice(0, Math.max(0, CALL_LINES - onLine.length))) {
     call.status = "ringing";
     call.startedAt = iso(now);
     call.events.push({ at: iso(now), status: "ringing", detail: call.kind === "report" ? "Calling the shopkeeper" : "Calling from Bolna's shared +91 number" });
-    active++;
     changed = true;
   }
 
