@@ -430,7 +430,6 @@ export const hi: Dictionary = {
     signedIn: (name: string) => `फिर से स्वागत है, ${name}।`,
     signedOut: "साइन आउट हो गए।",
     signOut: "साइन आउट",
-    loading: "आपका लॉगिन जाँचा जा रहा है…",
     gate: "ऐप इस्तेमाल करने के लिए साइन इन करें।",
   },
   report: {

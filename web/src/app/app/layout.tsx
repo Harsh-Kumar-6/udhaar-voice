@@ -8,10 +8,6 @@ export const metadata: Metadata = {
   title: { default: "Shop", template: "%s · Udhaar Voice" },
 };
 
-// AuthGuard renders a placeholder until the client-side session resolves, so this
-// subtree can't be instant-prerendered. Supabase + cookies will remove this later.
-export const instant = false;
-
 export default function ShopLayout({ children }: LayoutProps<"/app">) {
   return (
     <AuthGuard>

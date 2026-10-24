@@ -34,6 +34,5 @@ export const auth = {
   signedIn: (name: string) => `Welcome back, ${name}.`,
   signedOut: "Signed out.",
   signOut: "Sign out",
-  loading: "Checking your session…",
   gate: "You need to sign in to use the app.",
 };
