@@ -55,7 +55,7 @@ export function answerQuestion(db: MockDb, question: string, now: Date): AskAnsw
       question,
       tool: `schedule_call(name: "${named.name}", when: "${format(new Date(at), "EEE h:mm a")}")`,
       answer: `Done. I'll call ${named.name} ${format(new Date(at), "EEEE 'at' h:mm a")}.`,
-      action: { label: "See the scheduled call", href: "/app/reminders" },
+      action: { label: "See the scheduled call", href: result.batch ? `/app/calls/${result.batch.callIds[0]}` : "/app/calls" },
     };
   }
 

@@ -17,6 +17,7 @@ export function ScheduleDialog({
   onOpenChange,
   pending,
   initialAt,
+  labels,
   onSubmit,
 }: {
   open: boolean;
@@ -24,9 +25,11 @@ export function ScheduleDialog({
   pending: boolean;
   /** ISO string to pre-fill. If omitted, defaults to five minutes from now. */
   initialAt?: string;
+  /** Overrides the single-call wording, e.g. for moving a whole batch. */
+  labels?: { title: string; description: string; submit: string };
   onSubmit: (iso: string) => Promise<void>;
 }) {
-  const s = useT().customers.detail.scheduleDialog;
+  const s = { ...useT().customers.detail.scheduleDialog, ...labels };
   const [{ date, time, maxDate }] = useState(() => {
     const now = new Date();
     const base = initialAt ? new Date(initialAt) : new Date(now.getTime() + 5 * 60_000);

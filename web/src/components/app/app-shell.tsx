@@ -13,7 +13,6 @@ import {
   Store,
   Users,
   Ellipsis,
-  BellRing,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -34,7 +33,6 @@ function useNavItems(): NavItem[] {
     { href: "/app", label: t.home, icon: Home, exact: true },
     { href: "/app/customers", label: t.customers, icon: Users },
     { href: "/app/khata", label: t.khata, icon: Camera },
-    { href: "/app/reminders", label: t.reminders, icon: BellRing },
     { href: "/app/calls", label: t.calls, icon: PhoneCall },
     { href: "/app/ask", label: t.ask, short: t.askShort, icon: Sparkles },
     { href: "/app/report", label: t.report, short: t.reportShort, icon: BookOpenCheck },

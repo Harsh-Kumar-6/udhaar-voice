@@ -226,7 +226,7 @@ function CustomerActions({ d }: { d: CustomerDetail }) {
   const callAt = async (at: string) => {
     const r = await schedule.mutateAsync({ customerIds: [d.customer.id], at, language: "auto", bypassHours: shop.data?.demoBypassHours ?? false });
     if (r.outsideHours) {
-      const message = at === "now" ? c.outsideHours : t.reminders.outsideHours;
+      const message = at === "now" ? c.outsideHours : t.batches.outsideHours;
       toast.error(message(hourLabel(r.outsideHours.start), hourLabel(r.outsideHours.end)));
       return false;
     }
@@ -272,18 +272,12 @@ function CustomerActions({ d }: { d: CustomerDetail }) {
         <Tooltip>
           <TooltipTrigger asChild>
             <span tabIndex={blocked ? 0 : -1}>
-              <Button
-                size="icon-lg"
-                variant="outline"
-                aria-label={c.actions.editSchedule}
-                onClick={() => setScheduleOpen(true)}
-                disabled={!!blocked || schedule.isPending || !me}
-              >
-                <CalendarClock />
+              <Button size="lg" variant="outline" onClick={() => setScheduleOpen(true)} disabled={!!blocked || schedule.isPending || !me}>
+                <CalendarClock /> {c.actions.scheduleCall}
               </Button>
             </span>
           </TooltipTrigger>
-          <TooltipContent>{blocked ?? c.actions.editSchedule}</TooltipContent>
+          {blocked ? <TooltipContent>{blocked}</TooltipContent> : null}
         </Tooltip>
       </div>
       {whatsapp && d.balance > 0 ? (
