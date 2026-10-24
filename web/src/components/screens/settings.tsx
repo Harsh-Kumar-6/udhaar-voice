@@ -30,17 +30,18 @@ export function SettingsScreen() {
   if (q.isPending) return <LoadingBlock />;
   if (q.isError) return <ErrorBlock onRetry={() => q.refetch()} />;
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader title={t.title} description={t.description} />
       <AppLanguage />
-      <ShopForm key={JSON.stringify(q.data)} shop={q.data} />
+      <WorkflowForm key={JSON.stringify(q.data)} shop={q.data} />
       <PrototypeControls shop={q.data} />
       <About />
     </div>
   );
 }
 
-function ShopForm({ shop }: { shop: Shop }) {
+/** Shop-wide settings for how calls work. The shopkeeper's own details live on the Profile page. */
+function WorkflowForm({ shop }: { shop: Shop }) {
   const t = useT();
   const s = t.settings;
   const [draft, setDraft] = useState<Shop>(shop);
@@ -60,30 +61,8 @@ function ShopForm({ shop }: { shop: Shop }) {
     toast.success(s.saved);
   };
 
-  const field = (key: keyof Shop, label: string, hint?: string, props?: React.ComponentProps<typeof Input>) => (
-    <div className="space-y-1.5">
-      <Label htmlFor={`shop-${key}`}>{label}</Label>
-      <Input id={`shop-${key}`} value={String(draft[key] ?? "")} onChange={(e) => set(key, e.target.value as never)} aria-invalid={invalid.has(key) || undefined} {...props} />
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-    </div>
-  );
-
   return (
     <form onSubmit={submit} className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>{s.shop.title}</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          {field("name", s.shop.name)}
-          {field("ownerName", s.shop.owner)}
-          {field("ownerNameNative", s.shop.ownerNative, s.shop.ownerNativeHint, { lang: "bn" })}
-          {field("area", s.shop.area)}
-          {field("upiId", s.shop.upi, s.shop.upiHint)}
-          {field("ownerPhone", s.shop.ownerPhone, undefined, { inputMode: "tel" })}
-        </CardContent>
-      </Card>
-
       <Card>
         <CardHeader>
           <CardTitle>{s.calling.title}</CardTitle>
@@ -109,10 +88,6 @@ function ShopForm({ shop }: { shop: Shop }) {
             <Label htmlFor="shop-max">{s.calling.maxMinutes}</Label>
             <Input id="shop-max" type="number" min={1} max={10} value={draft.maxCallMinutes} onChange={(e) => set("maxCallMinutes", Number(e.target.value))} aria-invalid={invalid.has("maxCallMinutes") || undefined} />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="shop-report">{s.calling.reportTime}</Label>
-            <Input id="shop-report" type="time" value={draft.reportTime} onChange={(e) => set("reportTime", e.target.value)} />
-          </div>
         </CardContent>
       </Card>
 
@@ -135,8 +110,45 @@ function ShopForm({ shop }: { shop: Shop }) {
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
-        <Button type="submit" size="lg" disabled={save.isPending}>
+      <Card>
+        <CardHeader>
+          <CardTitle>{s.summary.title}</CardTitle>
+          <CardDescription>{s.summary.description}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <label className="flex items-center gap-3 text-sm font-medium">
+            <Switch id="report-enabled" checked={draft.reportEnabled} onCheckedChange={(on) => set("reportEnabled", on)} />
+            {s.summary.enabled}
+          </label>
+          {draft.reportEnabled ? (
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="report-time">{s.summary.time}</Label>
+                <Input id="report-time" type="time" value={draft.reportTime} onChange={(e) => set("reportTime", e.target.value)} className="h-11 sm:h-10" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="report-language">{s.summary.language}</Label>
+                <Select value={draft.reportLanguage} onValueChange={(v) => set("reportLanguage", v as Language)}>
+                  <SelectTrigger id="report-language" className="h-11 w-full sm:h-10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LANGS.map((l) => (
+                      <SelectItem key={l} value={l} lang={l}>
+                        {LANGUAGE_NAMES[l]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">{s.summary.languageHint}</p>
+              </div>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <div className="sticky bottom-20 z-10 flex justify-end lg:static">
+        <Button type="submit" size="lg" className="w-full shadow-lg sm:w-auto lg:shadow-none" disabled={save.isPending}>
           {s.save}
         </Button>
       </div>

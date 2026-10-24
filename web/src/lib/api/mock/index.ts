@@ -122,6 +122,37 @@ export const mockApi: UdhaarApi = {
       return session;
     }),
 
+  updateProfile: (input) =>
+    write((db) => {
+      const session = sessionFor(db);
+      if (!session) throw new Error("Sign in again to change your profile.");
+      const phone = normalizeIndianMobile(input.phone);
+      if (!phone) throw new Error("Enter a 10-digit Indian mobile number.");
+      const email = input.email.trim();
+      if (!EMAIL.test(email)) throw new Error("Enter a valid email address.");
+      const name = input.name.trim();
+      const shopName = input.shopName.trim();
+      if (!name || !shopName) throw new Error("Fill in your name and shop name.");
+      const upiId = input.upiId.trim();
+      if (!/^[\w.-]+@[\w.-]+$/.test(upiId)) throw new Error("Enter a UPI ID like name@bank.");
+      const others = db.users.filter((u) => u.id !== session.user.id);
+      if (others.some((u) => u.phone === phone)) throw new Error("That number belongs to another account.");
+      if (others.some((u) => u.email?.toLowerCase() === email.toLowerCase())) throw new Error("That email belongs to another account.");
+
+      const user = db.users.find((u) => u.id === session.user.id)!;
+      Object.assign(user, { name, phone, email });
+      db.shop = ShopSchema.parse({
+        ...db.shop,
+        name: shopName,
+        ownerName: name,
+        ownerNameNative: input.nameNative?.trim() || undefined,
+        ownerPhone: phone,
+        area: input.area.trim(),
+        upiId,
+      });
+      return sessionFor(db)!;
+    }),
+
   signOut: () =>
     write((db) => {
       db.sessionUserId = null;

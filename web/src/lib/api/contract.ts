@@ -214,6 +214,19 @@ export type SignUpInput = {
   language: Language;
 };
 
+/** The signed-in shopkeeper's own details, kept on both their account and their shop. */
+export type ProfileInput = {
+  name: string;
+  nameNative?: string;
+  /** 10-digit Indian mobile: the shop's contact number and where the evening summary is called. */
+  phone: string;
+  /** Used to sign in. */
+  email: string;
+  shopName: string;
+  area: string;
+  upiId: string;
+};
+
 export interface UdhaarApi {
   /** Returns the active session, or null when no one is signed in. */
   getSession(): Promise<Session | null>;
@@ -222,6 +235,8 @@ export interface UdhaarApi {
   /** Throws if the phone is already registered or validation fails. */
   signUp(input: SignUpInput): Promise<Session>;
   signOut(): Promise<void>;
+  /** Throws if validation fails or the phone or email belongs to another account. */
+  updateProfile(input: ProfileInput): Promise<Session>;
 
   getShop(): Promise<Shop>;
   updateShop(patch: Partial<Omit<Shop, "id">>): Promise<Shop>;
