@@ -1,6 +1,7 @@
 export const report = {
   title: "Today's report",
   description: (time: string) => `What came in, what was promised, and what needs you. Asha calls you with this every evening at ${time}.`,
+  descriptionOff: "What came in, what was promised, and what needs you. The evening call is off (turn it on in Settings).",
   stats: {
     collected: "Collected today",
     promised: "Promised today",

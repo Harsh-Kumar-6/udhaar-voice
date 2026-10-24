@@ -50,7 +50,8 @@ bolna/
 | `/app/ask` | Ask your khata (shows the tool the assistant called) |
 | `/app/report` | Today's report and the evening call |
 | `/app/graph` | Knowledge graph |
-| `/app/settings` | Shop, calling rules, languages, prototype controls |
+| `/app/profile` | Your details, shop and UPI ID (from the avatar menu: sidebar bottom on desktop, header top-right on phones) |
+| `/app/settings` | How the app works: app language, calling rules, customer calling languages, evening voice summary, prototype controls |
 
 ## Simulated vs real
 

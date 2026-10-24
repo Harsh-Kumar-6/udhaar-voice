@@ -110,7 +110,7 @@ export function scheduleReportCall(db: MockDb, turns: Turn[], summary: string, n
     shopId: db.shop.id,
     kind: "report",
     toNumber: db.shop.ownerPhone,
-    language: "bn",
+    language: db.shop.reportLanguage,
     status: "scheduled",
     scheduledAt: iso(now),
     transcript: [],

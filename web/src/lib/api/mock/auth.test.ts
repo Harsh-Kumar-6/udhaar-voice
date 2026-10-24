@@ -97,4 +97,42 @@ describe("mock auth", () => {
       mockApi.signUp({ phone: "9811112223", password: "abc", ownerName: "A", shopName: "B", language: "en" }),
     ).rejects.toThrow(/6 characters/i);
   });
+
+  describe("profile", () => {
+    const profile = {
+      name: "Gopal Saha",
+      nameNative: "গোপাল সাহা",
+      phone: "98300 12345",
+      email: "gopal@example.com",
+      shopName: "Maa Tara Stores",
+      area: "Kalyani",
+      upiId: "gopal@okaxis",
+    };
+
+    it("updates the account and the shop together", async () => {
+      resetDb();
+      await mockApi.signIn({ identifier: DEMO_PHONE, password: DEMO_PASSWORD });
+      const session = await mockApi.updateProfile(profile);
+      expect(session.user).toMatchObject({ phone: "+919830012345", email: "gopal@example.com" });
+      expect(session.shop).toMatchObject({ name: "Maa Tara Stores", ownerPhone: "+919830012345", upiId: "gopal@okaxis", area: "Kalyani" });
+      // The new email signs in.
+      await mockApi.signOut();
+      expect((await mockApi.signIn({ identifier: "gopal@example.com", password: DEMO_PASSWORD })).user.name).toBe("Gopal Saha");
+    });
+
+    it("refuses bad input and a phone that belongs to someone else", async () => {
+      resetDb();
+      await mockApi.signUp({ phone: "9876543210", password: "secret1", ownerName: "Other", shopName: "Other shop", language: "bn" });
+      await mockApi.signOut();
+      await mockApi.signIn({ identifier: DEMO_PHONE, password: DEMO_PASSWORD });
+      await expect(mockApi.updateProfile({ ...profile, phone: "12" })).rejects.toThrow(/10-digit/);
+      await expect(mockApi.updateProfile({ ...profile, upiId: "gopal" })).rejects.toThrow(/UPI/);
+      await expect(mockApi.updateProfile({ ...profile, phone: "9876543210" })).rejects.toThrow(/another account/);
+    });
+
+    it("needs someone signed in", async () => {
+      resetDb();
+      await expect(mockApi.updateProfile(profile)).rejects.toThrow(/sign in/i);
+    });
+  });
 });

@@ -27,7 +27,7 @@ export function ReportScreen() {
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow={format(parseISO(r.date), "EEEE d MMMM")} title={t.title} description={t.description(reportTime)} />
+      <PageHeader eyebrow={format(parseISO(r.date), "EEEE d MMMM")} title={t.title} description={shop.data?.reportEnabled === false ? t.descriptionOff : t.description(reportTime)} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label={t.stats.collected} value={formatINR(r.collected)} tone="paid" />
         <Stat label={t.stats.promised} value={formatINR(promisedTotal)} tone="promised" />
