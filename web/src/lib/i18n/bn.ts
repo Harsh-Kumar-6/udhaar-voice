@@ -430,7 +430,6 @@ export const bn: Dictionary = {
     signedIn: (name: string) => `আবার স্বাগতম, ${name}।`,
     signedOut: "বেরিয়ে গেছেন।",
     signOut: "বেরিয়ে যান",
-    loading: "আপনার লগইন দেখা হচ্ছে…",
     gate: "অ্যাপ ব্যবহার করতে আগে ঢুকুন।",
   },
   report: {
