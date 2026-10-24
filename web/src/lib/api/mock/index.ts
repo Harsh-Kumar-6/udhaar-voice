@@ -1,7 +1,7 @@
 import { addDays } from "date-fns";
 import { matchSavedEntry, normalizeIndianMobile, toDateKey } from "@/lib/domain/rules";
 import { Shop as ShopSchema, type Customer, type KhataImport, type LedgerEntry, type Payment } from "@/lib/domain/types";
-import type { KhataExtraction, KhataImportSummary, UdhaarApi } from "../contract";
+import type { KhataExtraction, KhataImportSummary, Session, UdhaarApi } from "../contract";
 import { answerQuestion } from "./assistant";
 import { cancelBatchInDb, cancelCallInDb, newId, rescheduleCallInDb, scheduleInDb, scheduleReportCall } from "./engine";
 import { SAMPLE_KHATA } from "./khata-sample";
@@ -33,6 +33,9 @@ const delay = (ms = 120 + Math.random() * 180) => new Promise<void>((resolve) =>
 
 let transcriptions = 0;
 
+/** Loose email check — good enough to catch typos; real validation is Supabase's job. */
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // Results are deep-copied, like JSON from a server. Handing out live objects would let
 // TanStack Query miss updates (it compares old and new data, which would be the same object).
 const clone = <T>(value: T): T => (value === undefined ? value : structuredClone(value));
@@ -53,7 +56,77 @@ function requireCustomer(db: MockDb, id: string): Customer {
   return c;
 }
 
+function sessionFor(db: MockDb): Session | null {
+  if (!db.sessionUserId) return null;
+  const user = db.users.find((u) => u.id === db.sessionUserId);
+  if (!user) return null;
+  if (user.shopId !== db.shop.id) return null;
+  const safe = { id: user.id, shopId: user.shopId, phone: user.phone, email: user.email, name: user.name, createdAt: user.createdAt };
+  return { user: safe, shop: db.shop };
+}
+
 export const mockApi: UdhaarApi = {
+  getSession: () => read((db) => sessionFor(db)),
+
+  signIn: ({ identifier, password }) =>
+    write((db) => {
+      const id = identifier.trim();
+      let user;
+      if (id.includes("@")) {
+        if (!EMAIL.test(id)) throw new Error("Enter a valid email address.");
+        const lower = id.toLowerCase();
+        user = db.users.find((u) => u.email?.toLowerCase() === lower);
+      } else {
+        const normalized = normalizeIndianMobile(id);
+        if (!normalized) throw new Error("Enter a 10-digit Indian mobile number or an email address.");
+        user = db.users.find((u) => u.phone === normalized);
+      }
+      if (!user || user.password !== password) throw new Error("Wrong details. Check your phone/email and password.");
+      db.sessionUserId = user.id;
+      const session = sessionFor(db);
+      if (!session) throw new Error("Session could not be created.");
+      return session;
+    }),
+
+  signUp: ({ phone, email, password, ownerName, shopName, language }) =>
+    write((db, now) => {
+      const normalized = normalizeIndianMobile(phone);
+      if (!normalized) throw new Error("Enter a 10-digit Indian mobile number.");
+      const trimmedEmail = email?.trim() || undefined;
+      if (trimmedEmail && !EMAIL.test(trimmedEmail)) throw new Error("Enter a valid email address.");
+      if (password.length < 6) throw new Error("Password must be at least 6 characters.");
+      if (!ownerName.trim() || !shopName.trim()) throw new Error("Fill in your name and shop name.");
+      if (db.users.some((u) => u.phone === normalized)) throw new Error("That number is already registered. Try signing in.");
+      if (trimmedEmail && db.users.some((u) => u.email?.toLowerCase() === trimmedEmail.toLowerCase())) {
+        throw new Error("That email is already registered. Try signing in.");
+      }
+      // The mock DB holds one shop, so signup replaces its owner. Real Supabase will allocate a new shop row.
+      const userId = newId("u");
+      db.users.push({
+        id: userId,
+        shopId: db.shop.id,
+        phone: normalized,
+        email: trimmedEmail,
+        password,
+        name: ownerName.trim(),
+        createdAt: now.toISOString(),
+      });
+      db.shop.ownerUserId = userId;
+      db.shop.name = shopName.trim();
+      db.shop.ownerName = ownerName.trim();
+      db.shop.ownerPhone = normalized;
+      if (!db.shop.languages.includes(language)) db.shop.languages = [language, ...db.shop.languages];
+      db.sessionUserId = userId;
+      const session = sessionFor(db);
+      if (!session) throw new Error("Session could not be created.");
+      return session;
+    }),
+
+  signOut: () =>
+    write((db) => {
+      db.sessionUserId = null;
+    }),
+
   getShop: () => read((db) => db.shop),
 
   updateShop: (patch) =>

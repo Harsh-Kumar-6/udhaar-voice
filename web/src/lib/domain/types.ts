@@ -18,8 +18,20 @@ export const CallingHours = z
   .refine((h) => h.end > h.start, { message: "Calling hours must end after they start" });
 export type CallingHours = z.infer<typeof CallingHours>;
 
+export const User = z.object({
+  id: z.string(),
+  shopId: z.string(),
+  phone: z.string(),
+  email: z.string().optional(),
+  name: z.string().min(1),
+  createdAt: isoDateTime,
+});
+export type User = z.infer<typeof User>;
+
 export const Shop = z.object({
   id: z.string(),
+  /** The user account that owns this shop. Nullable for demo shops seeded without a login. */
+  ownerUserId: z.string().optional(),
   name: z.string().min(1),
   ownerName: z.string().min(1),
   /** The owner's name in Bengali script, used when the evening report speaks Bengali. */
