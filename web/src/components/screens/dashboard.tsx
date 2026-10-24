@@ -82,7 +82,7 @@ export function DashboardScreen() {
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link href="/app/reminders">
+              <Link href="/app/calls?new=1">
                 <BellRing /> {d.actions.schedule}
               </Link>
             </Button>
@@ -92,7 +92,7 @@ export function DashboardScreen() {
 
       {data.activeBatch ? (
         <Link
-          href="/app/reminders"
+          href="/app/calls"
           className="flex items-center gap-4 rounded-xl border border-primary/30 bg-accent px-4 py-3 transition-colors hover:bg-accent/70"
         >
           <PhoneCall className="size-5 shrink-0 animate-pulse text-primary" />

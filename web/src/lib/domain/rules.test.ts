@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   balanceOf,
+  batchStatus,
   buildMemory,
+  canChangeBatchTime,
   canRemind,
   confidenceLabel,
   customerStatus,
@@ -217,5 +219,32 @@ describe("matchSavedEntry", () => {
   it("treats other days and other items as new", () => {
     expect(matchSavedEntry({ date: "2026-10-21", amount: 120, items: "Rice 2 kg" }, saved)).toBeUndefined();
     expect(matchSavedEntry({ date: "2026-10-20", amount: 40, items: "Milk" }, saved)).toBeUndefined();
+  });
+});
+
+describe("batchStatus", () => {
+  it("is scheduled until a call starts, then running", () => {
+    expect(batchStatus(["scheduled", "scheduled"])).toBe("scheduled");
+    expect(batchStatus(["scheduled", "cancelled"])).toBe("scheduled");
+    expect(batchStatus(["queued", "scheduled"])).toBe("running");
+    expect(batchStatus(["completed", "scheduled"])).toBe("running");
+  });
+  it("is completed when some calls ran and the rest were removed", () => {
+    expect(batchStatus(["completed", "no_answer"])).toBe("completed");
+    expect(batchStatus(["completed", "cancelled"])).toBe("completed");
+  });
+  it("is cancelled only when no call ran", () => {
+    expect(batchStatus(["cancelled", "cancelled"])).toBe("cancelled");
+  });
+});
+
+describe("canChangeBatchTime", () => {
+  it("allows it while every remaining call is waiting for its time", () => {
+    expect(canChangeBatchTime(["scheduled", "cancelled"])).toBe(true);
+  });
+  it("refuses once dialing started, or when nothing is left to move", () => {
+    expect(canChangeBatchTime(["queued", "scheduled"])).toBe(false);
+    expect(canChangeBatchTime(["completed", "scheduled"])).toBe(false);
+    expect(canChangeBatchTime(["cancelled"])).toBe(false);
   });
 });

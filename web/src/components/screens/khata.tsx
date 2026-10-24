@@ -137,7 +137,7 @@ export function KhataScreen() {
                 <RotateCcw /> {t.saved.another}
               </Button>
               <Button asChild size="lg">
-                <Link href="/app/reminders">
+                <Link href="/app/calls?new=1">
                   <PhoneCall /> {t.saved.remind}
                 </Link>
               </Button>

@@ -1,5 +1,7 @@
 import type {
+  BatchStatus,
   CallingHours,
+  CallStatus,
   CustomerStatus,
   Dispute,
   LedgerEntry,
@@ -218,4 +220,22 @@ export function buildMemory(
   if (note) lines.push(note.text);
 
   return lines.slice(0, 3).join(" ") || "No previous calls.";
+}
+
+const DIALING: CallStatus[] = ["queued", "ringing", "in_progress"];
+
+/**
+ * A batch's status from its calls' statuses. Cancelled only when no call in it ever ran; a batch where
+ * some calls finished and the rest were removed is completed.
+ */
+export function batchStatus(calls: CallStatus[]): BatchStatus {
+  if (calls.some((s) => s === "scheduled" || DIALING.includes(s))) {
+    return calls.some((s) => s !== "scheduled" && s !== "cancelled") ? "running" : "scheduled";
+  }
+  return calls.every((s) => s === "cancelled") ? "cancelled" : "completed";
+}
+
+/** A batch's time can change only before it starts dialing: every call still in it is waiting for its time. */
+export function canChangeBatchTime(calls: CallStatus[]): boolean {
+  return calls.some((s) => s === "scheduled") && calls.every((s) => s === "scheduled" || s === "cancelled");
 }

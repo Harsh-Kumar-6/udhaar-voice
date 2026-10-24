@@ -64,8 +64,11 @@ export type CallDetail = CallListItem & { batch?: ReminderBatch };
 export type BatchSummary = {
   batch: ReminderBatch;
   calls: CallListItem[];
-  counts: { waiting: number; active: number; done: number };
+  /** `removed`: cancelled before they ran. `done`: every other finished call. */
+  counts: { waiting: number; active: number; done: number; removed: number };
   outcomes: Partial<Record<CallOutcome, number>>;
+  /** True until the batch starts dialing; after that only waiting customers can be removed. */
+  canChangeTime: boolean;
 };
 
 export type AttentionItem = {
@@ -180,6 +183,12 @@ export type RescheduleResult = {
   outsideHours?: CallingHours;
 };
 
+export type RescheduleBatchResult = {
+  batch: ReminderBatch;
+  /** Set when the requested time is outside calling hours. Nothing changes; the shopkeeper picks another time. */
+  outsideHours?: CallingHours;
+};
+
 export type EligibleCustomer = CustomerSummary & {
   eligible: boolean;
   /** Why the customer cannot be called right now. */
@@ -233,6 +242,8 @@ export interface UdhaarApi {
   /** Cancel a scheduled or queued call. No-op if it has already run or been cancelled. */
   cancelCall(id: string): Promise<void>;
   listBatches(): Promise<BatchSummary[]>;
+  /** Move every waiting call in a batch to a new time. Throws once the batch has started dialing. */
+  rescheduleBatch(id: string, at: string, bypassHours: boolean): Promise<RescheduleBatchResult>;
   cancelBatch(id: string): Promise<void>;
 
   extractKhata(input: { source: "sample" | "upload"; fileName?: string }): Promise<KhataExtraction>;

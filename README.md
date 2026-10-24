@@ -46,8 +46,7 @@ bolna/
 | `/app` | Dashboard: pending, promised, collected, what needs attention |
 | `/app/customers`, `/app/customers/[id]` | Customer list and page (memory, promises, disputes, khata, calls) |
 | `/app/khata` | Snap khata: photo → entries → review (crossed-out values, repeats, changes) → save; undo a whole import |
-| `/app/reminders` | Schedule reminder batches and watch them run |
-| `/app/calls`, `/app/calls/[id]` | Call history and the call screen (live state, transcript, extraction, event log) |
+| `/app/calls`, `/app/calls/[id]` | Calls: schedule reminder batches (change a batch's time before it starts, remove anyone not yet called), watch them run, call history, and the call screen (live state, transcript, extraction, event log). `/app/reminders` redirects here. |
 | `/app/ask` | Ask your khata (shows the tool the assistant called) |
 | `/app/report` | Today's report and the evening call |
 | `/app/graph` | Knowledge graph |
