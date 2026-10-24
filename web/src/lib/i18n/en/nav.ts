@@ -2,7 +2,6 @@ export const nav = {
   home: "Home",
   customers: "Customers",
   khata: "Snap khata",
-  reminders: "Reminders",
   calls: "Calls",
   ask: "Ask your khata",
   askShort: "Ask",

@@ -2,6 +2,7 @@ import { addDays, format, parseISO } from "date-fns";
 import {
   balanceOf,
   buildMemory,
+  canChangeBatchTime,
   canRemind,
   confidenceLabel,
   customerStatus,
@@ -175,16 +176,17 @@ export function batchSummary(db: MockDb, batchId: string): BatchSummary | null {
     .map((id) => db.calls.find((k) => k.id === id))
     .filter((k): k is Call => !!k)
     .map((call) => listItem(db, call, spots));
-  const counts = { waiting: 0, active: 0, done: 0 };
+  const counts = { waiting: 0, active: 0, done: 0, removed: 0 };
   const outcomes: BatchSummary["outcomes"] = {};
   for (const { call } of calls) {
     if (call.status === "scheduled" || call.status === "queued" || call.status === "rescheduled") counts.waiting++;
     else if (call.status === "ringing" || call.status === "in_progress") counts.active++;
+    else if (call.status === "cancelled") counts.removed++;
     else counts.done++;
     const outcome = call.extraction?.outcome ?? (call.status === "no_answer" ? "no_answer" : undefined);
     if (outcome && !isActiveCall(call.status)) outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
   }
-  return { batch, calls, counts, outcomes };
+  return { batch, calls, counts, outcomes, canChangeTime: canChangeBatchTime(calls.map((x) => x.call.status)) };
 }
 
 export function batchSummaries(db: MockDb): BatchSummary[] {

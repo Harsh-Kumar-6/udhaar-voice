@@ -216,7 +216,7 @@ function LivePanel({ call, queue }: { call: Call; queue?: QueueSpot }) {
             initialAt={call.scheduledAt}
             onSubmit={async (iso) => {
               const r = await reschedule.mutateAsync(iso);
-              if (r.outsideHours) return void toast.error(t.reminders.outsideHours(hourLabel(r.outsideHours.start), hourLabel(r.outsideHours.end)));
+              if (r.outsideHours) return void toast.error(t.batches.outsideHours(hourLabel(r.outsideHours.start), hourLabel(r.outsideHours.end)));
               toast.success(d.rescheduled(format(parseISO(r.call.scheduledAt), "EEE h:mm a")));
               setEditOpen(false);
             }}

@@ -1,6 +1,7 @@
 export const calls = {
   title: "Calls",
-  description: "Every reminder and evening report, with what each call captured.",
+  description: "Schedule batches of reminder calls, follow them live, and see what every call captured.",
+  history: "All calls",
   filters: { all: "All", reminder: "Reminders", report: "Evening reports" },
   stats: {
     today: "Calls today",

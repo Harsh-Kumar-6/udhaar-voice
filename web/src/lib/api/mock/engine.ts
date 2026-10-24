@@ -1,7 +1,7 @@
 import { format } from "date-fns";
-import { dialOrder, isPromiseBroken, isWithinCallingHours } from "@/lib/domain/rules";
-import type { Call, CallStatus, Language, ReminderBatch, Turn } from "@/lib/domain/types";
-import type { RescheduleResult, ScheduleInput, ScheduleResult } from "../contract";
+import { batchStatus, canChangeBatchTime, dialOrder, isPromiseBroken, isWithinCallingHours } from "@/lib/domain/rules";
+import type { Call, Language, ReminderBatch, Turn } from "@/lib/domain/types";
+import type { RescheduleBatchResult, RescheduleResult, ScheduleInput, ScheduleResult } from "../contract";
 import { candidates, customerDetail } from "./queries";
 import { buildReminderScript, transcriptSeconds } from "./scripts";
 import { CALL_LINES, COST_PER_MINUTE_USD } from "./seed";
@@ -15,7 +15,6 @@ import type { MockDb, SimPlan } from "./types";
 
 const RING_SECONDS = 6;
 const NO_ANSWER_SECONDS = 30;
-const ACTIVE: CallStatus[] = ["scheduled", "queued", "ringing", "in_progress"];
 
 export const newId = (prefix: string) => `${prefix}${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
 const iso = (d: Date) => d.toISOString();
@@ -153,16 +152,33 @@ export function cancelCallInDb(db: MockDb, callId: string, now: Date) {
   call.status = "cancelled";
   call.events.push({ at: iso(now), status: "cancelled", detail: "Cancelled by the shopkeeper" });
   delete db.plans[call.id];
-  if (call.batchId) {
-    const batch = db.batches.find((b) => b.id === call.batchId);
-    if (batch) {
-      const stillActive = batch.callIds.some((id) => {
-        const s = db.calls.find((k) => k.id === id)?.status;
-        return s && ACTIVE.includes(s);
-      });
-      if (!stillActive) batch.status = "cancelled";
-    }
+  const batch = call.batchId ? db.batches.find((b) => b.id === call.batchId) : undefined;
+  if (batch) batch.status = batchStatus(callStatuses(db, batch));
+}
+
+const callStatuses = (db: MockDb, batch: ReminderBatch) => batch.callIds.map((id) => db.calls.find((k) => k.id === id)?.status ?? "cancelled");
+
+export function rescheduleBatchInDb(db: MockDb, batchId: string, at: string, bypassHours: boolean, now: Date): RescheduleBatchResult {
+  const batch = db.batches.find((b) => b.id === batchId);
+  if (!batch) throw new Error("Batch not found");
+  if (!canChangeBatchTime(callStatuses(db, batch))) throw new Error("This batch has started calling, so its time can't change");
+
+  const when = new Date(at);
+  if (!Number.isFinite(when.getTime())) throw new Error("Invalid time");
+  const hours = db.shop.callingHours;
+  const inside = isWithinCallingHours(when, hours);
+  // Same rule as scheduling: outside calling hours nothing changes; the shopkeeper picks another time.
+  if (!inside && !bypassHours) return { batch, outsideHours: hours };
+  const detail = inside ? `Batch moved to ${format(when, "EEE d MMM, h:mm a")}` : "Batch moved outside calling hours: bypassed for this demo";
+
+  batch.scheduledAt = iso(when);
+  for (const id of batch.callIds) {
+    const call = db.calls.find((k) => k.id === id);
+    if (call?.status !== "scheduled") continue;
+    call.scheduledAt = iso(when);
+    call.events.push({ at: iso(now), status: "scheduled", detail });
   }
+  return { batch };
 }
 
 export function cancelBatchInDb(db: MockDb, batchId: string, now: Date) {
@@ -176,12 +192,7 @@ export function cancelBatchInDb(db: MockDb, batchId: string, now: Date) {
       delete db.plans[id];
     }
   }
-  batch.status = batch.callIds.every((id) => {
-    const s = db.calls.find((k) => k.id === id)?.status;
-    return !s || !ACTIVE.includes(s);
-  })
-    ? "cancelled"
-    : "running";
+  batch.status = batchStatus(callStatuses(db, batch));
 }
 
 /** Advances every call by one step. Returns true if anything changed. */
@@ -231,12 +242,7 @@ export function tick(db: MockDb, now: Date): boolean {
 
   for (const batch of db.batches) {
     if (batch.status === "completed" || batch.status === "cancelled") continue;
-    const statuses = batch.callIds.map((id) => db.calls.find((k) => k.id === id)?.status ?? "cancelled");
-    const next: ReminderBatch["status"] = statuses.every((s) => !ACTIVE.includes(s))
-      ? "completed"
-      : statuses.some((s) => s !== "scheduled")
-        ? "running"
-        : "scheduled";
+    const next = batchStatus(callStatuses(db, batch));
     if (next !== batch.status) {
       batch.status = next;
       changed = true;

@@ -25,7 +25,7 @@ export const customers = {
       optOut: "Stop calls",
       optIn: "Allow calls again",
       more: "More actions",
-      editSchedule: "Pick a different time",
+      scheduleCall: "Schedule call",
     },
     callScheduled: (name: string) => `Calling ${name} now`,
     outsideHours: (start: string, end: string) => `It's outside calling hours (${start}–${end}). Call during those hours.`,

@@ -232,6 +232,7 @@ export const Call = z.object({
 export type Call = z.infer<typeof Call>;
 
 export const BatchStatus = z.enum(["scheduled", "running", "completed", "cancelled"]);
+export type BatchStatus = z.infer<typeof BatchStatus>;
 export const ReminderBatch = z.object({
   id: z.string(),
   shopId: z.string(),

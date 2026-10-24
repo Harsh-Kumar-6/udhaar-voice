@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { answerQuestion } from "./assistant";
-import { rescheduleCallInDb, scheduleInDb, tick } from "./engine";
+import { cancelBatchInDb, cancelCallInDb, rescheduleBatchInDb, rescheduleCallInDb, scheduleInDb, tick } from "./engine";
 import { callItems, candidates, dailyReport, dashboard, graph, summaries } from "./queries";
 import { createSeed } from "./seed";
 import type { MockDb } from "./types";
@@ -89,6 +89,61 @@ describe("rescheduling", () => {
     const moved = rescheduleCallInDb(db, callId, new Date("2026-10-21T21:00:00").toISOString(), false, NOW);
     expect(moved.outsideHours).toEqual(db.shop.callingHours);
     expect(db.calls.find((k) => k.id === callId)?.scheduledAt).toBe(later);
+  });
+});
+
+describe("editing a batch", () => {
+  const later = new Date("2026-10-21T15:00:00").toISOString();
+
+  it("moves every waiting call while the batch hasn't started", () => {
+    const db = fresh();
+    const r = scheduleInDb(db, { customerIds: ["c01", "c02", "c13"], at: later, language: "auto", bypassHours: false }, NOW);
+    const batch = r.batch!;
+    cancelCallInDb(db, batch.callIds[0], NOW);
+    const at = new Date("2026-10-22T10:30:00").toISOString();
+    expect(rescheduleBatchInDb(db, batch.id, at, false, NOW).outsideHours).toBeUndefined();
+    expect(batch.scheduledAt).toBe(at);
+    const [removed, ...rest] = batch.callIds.map((id) => db.calls.find((k) => k.id === id)!);
+    expect(removed.status).toBe("cancelled");
+    expect(rest.every((k) => k.scheduledAt === at)).toBe(true);
+  });
+
+  it("changes nothing when the new time is outside calling hours", () => {
+    const db = fresh();
+    const batch = scheduleInDb(db, { customerIds: ["c01", "c02"], at: later, language: "auto", bypassHours: false }, NOW).batch!;
+    const r = rescheduleBatchInDb(db, batch.id, new Date("2026-10-21T21:00:00").toISOString(), false, NOW);
+    expect(r.outsideHours).toEqual(db.shop.callingHours);
+    expect(batch.scheduledAt).toBe(later);
+  });
+
+  it("refuses to move a batch that started calling, but still removes waiting customers", () => {
+    const db = fresh();
+    const ids = candidates(db, NOW).filter((c) => c.eligible).map((c) => c.customer.id);
+    const batch = scheduleInDb(db, { customerIds: ids, at: "now", language: "auto", bypassHours: false }, NOW).batch!;
+    const t = runFor(db, 3);
+    expect(() => rescheduleBatchInDb(db, batch.id, later, false, t)).toThrow(/started calling/);
+    const waiting = batch.callIds.filter((id) => db.calls.find((k) => k.id === id)?.status === "queued");
+    cancelCallInDb(db, waiting[0], t);
+    expect(db.calls.find((k) => k.id === waiting[0])?.status).toBe("cancelled");
+    expect(batch.status).toBe("running");
+  });
+
+  it("marks a batch completed, not cancelled, when the rest are removed after some calls ran", () => {
+    const db = fresh();
+    const ids = candidates(db, NOW).filter((c) => c.eligible).map((c) => c.customer.id);
+    const batch = scheduleInDb(db, { customerIds: ids, at: "now", language: "auto", bypassHours: false }, NOW).batch!;
+    let t = NOW;
+    while (!batch.callIds.some((id) => db.calls.find((k) => k.id === id)?.status === "completed")) t = runFor(db, 1, t);
+    cancelBatchInDb(db, batch.id, t);
+    runFor(db, 120, t);
+    expect(batch.status).toBe("completed");
+  });
+
+  it("marks a batch cancelled when everyone is removed before it starts", () => {
+    const db = fresh();
+    const batch = scheduleInDb(db, { customerIds: ["c01", "c02"], at: later, language: "auto", bypassHours: false }, NOW).batch!;
+    for (const id of batch.callIds) cancelCallInDb(db, id, NOW);
+    expect(batch.status).toBe("cancelled");
   });
 });
 
