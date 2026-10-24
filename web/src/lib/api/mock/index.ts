@@ -3,7 +3,7 @@ import { matchSavedEntry, normalizeIndianMobile, toDateKey } from "@/lib/domain/
 import { Shop as ShopSchema, type Customer, type KhataImport, type LedgerEntry, type Payment } from "@/lib/domain/types";
 import type { KhataExtraction, KhataImportSummary, Session, UdhaarApi } from "../contract";
 import { answerQuestion } from "./assistant";
-import { cancelBatchInDb, cancelCallInDb, newId, rescheduleCallInDb, scheduleInDb, scheduleReportCall } from "./engine";
+import { cancelBatchInDb, cancelCallInDb, newId, rescheduleBatchInDb, rescheduleCallInDb, scheduleInDb, scheduleReportCall } from "./engine";
 import { SAMPLE_KHATA } from "./khata-sample";
 import {
   batchSummaries,
@@ -187,6 +187,7 @@ export const mockApi: UdhaarApi = {
   rescheduleCall: (id, at, bypassHours) => write((db, now) => rescheduleCallInDb(db, id, at, bypassHours, now)),
   cancelCall: (id) => write((db, now) => cancelCallInDb(db, id, now)),
   listBatches: () => read((db) => batchSummaries(db)),
+  rescheduleBatch: (id, at, bypassHours) => write((db, now) => rescheduleBatchInDb(db, id, at, bypassHours, now)),
   cancelBatch: (id) => write((db, now) => cancelBatchInDb(db, id, now)),
 
   extractKhata: async ({ source }) => {
