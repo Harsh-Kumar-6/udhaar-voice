@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { answerQuestion } from "./assistant";
-import { scheduleInDb, tick } from "./engine";
+import { rescheduleCallInDb, scheduleInDb, tick } from "./engine";
 import { callItems, candidates, dailyReport, dashboard, graph, summaries } from "./queries";
 import { createSeed } from "./seed";
 import type { MockDb } from "./types";
@@ -77,6 +77,18 @@ describe("who can be called", () => {
     expect(r.batch).toBeUndefined();
     expect(r.outsideHours).toEqual(db.shop.callingHours);
     expect(db.calls.some((k) => k.status === "scheduled")).toBe(false);
+  });
+});
+
+describe("rescheduling", () => {
+  it("leaves the call unchanged when the new time is outside calling hours", () => {
+    const db = fresh();
+    const later = new Date("2026-10-21T15:00:00").toISOString();
+    const r = scheduleInDb(db, { customerIds: ["c01"], at: later, language: "auto", bypassHours: false }, NOW);
+    const callId = r.batch!.callIds[0];
+    const moved = rescheduleCallInDb(db, callId, new Date("2026-10-21T21:00:00").toISOString(), false, NOW);
+    expect(moved.outsideHours).toEqual(db.shop.callingHours);
+    expect(db.calls.find((k) => k.id === callId)?.scheduledAt).toBe(later);
   });
 });
 

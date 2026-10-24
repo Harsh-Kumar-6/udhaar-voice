@@ -42,5 +42,10 @@ export const calls = {
     cost: "Cost",
     batch: "Part of a reminder batch",
     viewCustomer: "Open customer",
+    reschedule: "Pick a different time",
+    rescheduled: (when: string) => `Call moved to ${when}`,
+    cancel: "Cancel call",
+    cancelled: "Call cancelled",
+    cancelConfirm: "Cancel this scheduled call?",
   },
 };

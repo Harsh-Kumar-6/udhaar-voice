@@ -4,6 +4,7 @@ import { format, parseISO } from "date-fns";
 import {
   ArrowLeft,
   BadgeIndianRupee,
+  CalendarClock,
   Ellipsis,
   MessageCircle,
   PhoneCall,
@@ -30,6 +31,7 @@ import {
   StatusChip,
   TimeAgo,
 } from "@/components/app/bits";
+import { ScheduleDialog } from "@/components/app/schedule-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -212,37 +214,78 @@ function CustomerActions({ d }: { d: CustomerDetail }) {
   const update = useApiMutation((patch: Parameters<typeof api.updateCustomer>[1]) => api.updateCustomer(d.customer.id, patch));
   const [payOpen, setPayOpen] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   // The dashboard's "Update number" links here with #phone. This component only renders in the
   // browser (after the customer has loaded), so reading the hash while creating state is safe.
   const [phoneOpen, setPhoneOpen] = useState(() => typeof window !== "undefined" && window.location.hash === "#phone");
 
   const me = candidates.data?.find((x) => x.customer.id === d.customer.id);
   const blocked = me && !me.eligible ? me.reason : undefined;
+  const scheduledCall = d.calls.find((k) => k.status === "scheduled" || k.status === "queued");
 
-  const callNow = async () => {
-    const r = await schedule.mutateAsync({ customerIds: [d.customer.id], at: "now", language: "auto", bypassHours: shop.data?.demoBypassHours ?? false });
-    if (r.outsideHours) return toast.error(c.outsideHours(hourLabel(r.outsideHours.start), hourLabel(r.outsideHours.end)));
-    if (!r.batch) return toast.error(r.skipped[0]?.reason ?? "Couldn't schedule the call");
-    toast.success(c.callScheduled(d.customer.name));
+  const callAt = async (at: string) => {
+    const r = await schedule.mutateAsync({ customerIds: [d.customer.id], at, language: "auto", bypassHours: shop.data?.demoBypassHours ?? false });
+    if (r.outsideHours) {
+      const message = at === "now" ? c.outsideHours : t.reminders.outsideHours;
+      toast.error(message(hourLabel(r.outsideHours.start), hourLabel(r.outsideHours.end)));
+      return false;
+    }
+    if (!r.batch) {
+      toast.error(r.skipped[0]?.reason ?? "Couldn't schedule the call");
+      return false;
+    }
+    if (at === "now") toast.success(c.callScheduled(d.customer.name));
+    else toast.success(c.callScheduledAt(d.customer.name, format(parseISO(at), "EEE h:mm a")));
     router.push(`/app/calls/${r.batch.callIds[0]}`);
+    return true;
   };
+  const callNow = () => callAt("now");
 
   const shopName = shop.data?.name ?? "";
   const upi = shop.data ? upiLink({ upiId: shop.data.upiId, payeeName: shopName, amount: d.balance, note: "Khata dues" }) : "";
   const whatsapp = d.customer.phone ? whatsappShareLink(d.customer.phone, c.upiMessage(shopName, formatINR(d.balance), upi)) : undefined;
 
   return (
-    <div className="flex flex-wrap gap-2 md:justify-end">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span tabIndex={blocked ? 0 : -1}>
-            <Button size="lg" onClick={callNow} disabled={!!blocked || schedule.isPending || !me}>
-              <PhoneCall /> {c.actions.callNow}
-            </Button>
-          </span>
-        </TooltipTrigger>
-        {blocked ? <TooltipContent>{blocked}</TooltipContent> : null}
-      </Tooltip>
+    <div className="flex flex-col gap-2 md:items-end">
+      {scheduledCall ? (
+        <Link
+          href={`/app/calls/${scheduledCall.id}`}
+          aria-label={c.openNextCall}
+          className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-accent px-3 py-1 text-xs font-medium text-primary hover:bg-accent/80"
+        >
+          <CalendarClock className="size-3.5" />
+          {c.nextCall(format(parseISO(scheduledCall.scheduledAt), "EEE h:mm a"))}
+        </Link>
+      ) : null}
+      <div className="flex flex-wrap gap-2 md:justify-end">
+      <div className="inline-flex gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span tabIndex={blocked ? 0 : -1}>
+              <Button size="lg" onClick={callNow} disabled={!!blocked || schedule.isPending || !me}>
+                <PhoneCall /> {c.actions.callNow}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          {blocked ? <TooltipContent>{blocked}</TooltipContent> : null}
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span tabIndex={blocked ? 0 : -1}>
+              <Button
+                size="icon-lg"
+                variant="outline"
+                aria-label={c.actions.editSchedule}
+                onClick={() => setScheduleOpen(true)}
+                disabled={!!blocked || schedule.isPending || !me}
+              >
+                <CalendarClock />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{blocked ?? c.actions.editSchedule}</TooltipContent>
+        </Tooltip>
+      </div>
       {whatsapp && d.balance > 0 ? (
         <Button asChild size="lg" variant="outline">
           <a href={whatsapp} target="_blank" rel="noopener noreferrer">
@@ -280,6 +323,15 @@ function CustomerActions({ d }: { d: CustomerDetail }) {
       <PaymentDialog open={payOpen} onOpenChange={setPayOpen} customerId={d.customer.id} suggested={d.nextPromise?.amount ?? d.balance} />
       <EntryDialog open={entryOpen} onOpenChange={setEntryOpen} customerId={d.customer.id} />
       <PhoneDialog open={phoneOpen} onOpenChange={setPhoneOpen} current={d.customer.phone} onSave={(phone) => update.mutateAsync({ phone })} />
+      <ScheduleDialog
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        pending={schedule.isPending}
+        onSubmit={async (iso) => {
+          if (await callAt(iso)) setScheduleOpen(false);
+        }}
+      />
+      </div>
     </div>
   );
 }
