@@ -16,10 +16,12 @@ import {
   BellRing,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useState } from "react";
+import { toast } from "sonner";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { useShop } from "@/lib/api/hooks";
+import { api } from "@/lib/api";
+import { useApiMutation, useShop } from "@/lib/api/hooks";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
@@ -156,6 +158,9 @@ function MobileTabs({ pathname }: { pathname: string | null }) {
                 </Link>
               ))}
             </div>
+            <div className="mt-4 flex justify-center">
+              <SignOutButton className="rounded-md border px-4 py-2 text-sm" />
+            </div>
           </SheetContent>
         </Sheet>
       </div>
@@ -165,6 +170,26 @@ function MobileTabs({ pathname }: { pathname: string | null }) {
 
 function MobileTabsWithPath() {
   return <MobileTabs pathname={usePathname()} />;
+}
+
+function SignOutButton({ className }: { className?: string }) {
+  const t = useT().auth;
+  const router = useRouter();
+  const signOut = useApiMutation(() => api.signOut());
+  return (
+    <button
+      type="button"
+      className={cn("text-xs text-muted-foreground hover:text-foreground disabled:opacity-50", className)}
+      disabled={signOut.isPending}
+      onClick={async () => {
+        await signOut.mutateAsync();
+        toast.success(t.signedOut);
+        router.replace("/login");
+      }}
+    >
+      {t.signOut}
+    </button>
+  );
 }
 
 export function AppShell({ banner, children }: { banner: React.ReactNode; children: React.ReactNode }) {
@@ -178,10 +203,11 @@ export function AppShell({ banner, children }: { banner: React.ReactNode; childr
         <Suspense fallback={<SidebarLinks pathname={null} />}>
           <SidebarLinksWithPath />
         </Suspense>
-        <div className="mt-auto flex items-center justify-between px-2">
+        <div className="mt-auto flex items-center justify-between gap-2 px-2">
           <Link href="/" className="text-xs text-muted-foreground hover:text-foreground">
             {t.nav.website}
           </Link>
+          <SignOutButton />
           <ThemeToggle />
         </div>
       </aside>

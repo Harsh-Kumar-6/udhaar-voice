@@ -8,8 +8,14 @@ import type { MockDb } from "./types";
  * so the demo always looks current. Phone numbers are fake and always shown masked.
  */
 
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 export const SHOP_ID = "s1";
+export const DEMO_USER_ID = "u-demo";
+/** 10-digit form the shopkeeper types. Stored on the user as "+919000000001". */
+export const DEMO_PHONE = "9000000001";
+export const DEMO_PHONE_E164 = "+919000000001";
+export const DEMO_EMAIL = "demo@udhaar.voice";
+export const DEMO_PASSWORD = "demo1234";
 export const COST_PER_MINUTE_USD = 0.06;
 /** Calls that can be on the line at once, across every shop. Bolna trial accounts allow 2, paid accounts start at 10. */
 export const CALL_LINES = 2;
@@ -133,8 +139,21 @@ export function createSeed(now: Date = new Date()): MockDb {
   const db: MockDb = {
     version: DB_VERSION,
     seededAt: now.toISOString(),
+    users: [
+      {
+        id: DEMO_USER_ID,
+        shopId: SHOP_ID,
+        phone: DEMO_PHONE_E164,
+        email: DEMO_EMAIL,
+        password: DEMO_PASSWORD,
+        name: "Gopal Saha",
+        createdAt: now.toISOString(),
+      },
+    ],
+    sessionUserId: null,
     shop: {
       id: SHOP_ID,
+      ownerUserId: DEMO_USER_ID,
       name: "Maa Tara Variety Stores",
       ownerName: "Gopal Saha",
       ownerNameNative: "গোপাল সাহা",
