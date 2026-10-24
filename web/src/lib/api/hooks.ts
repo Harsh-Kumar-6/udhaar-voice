@@ -5,6 +5,7 @@ import { api } from ".";
 
 /** Data hooks used by every screen. Keys are grouped so a write can refresh everything at once. */
 
+export const useSession = () => useQuery({ queryKey: ["session"], queryFn: () => api.getSession() });
 export const useShop = () => useQuery({ queryKey: ["shop"], queryFn: () => api.getShop() });
 export const useCustomers = () => useQuery({ queryKey: ["customers"], queryFn: () => api.listCustomers() });
 export const useReminderCandidates = () => useQuery({ queryKey: ["candidates"], queryFn: () => api.listReminderCandidates() });

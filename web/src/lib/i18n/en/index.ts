@@ -1,4 +1,5 @@
 import { ask } from "./ask";
+import { auth } from "./auth";
 import { calls } from "./calls";
 import { common } from "./common";
 import { customers } from "./customers";
@@ -19,6 +20,7 @@ export const en = {
   reminders,
   khata,
   ask,
+  auth,
   report,
   graph,
   settings,

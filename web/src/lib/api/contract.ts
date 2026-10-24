@@ -13,6 +13,7 @@ import type {
   PaymentPromise,
   ReminderBatch,
   Shop,
+  User,
 } from "@/lib/domain/types";
 
 /**
@@ -191,7 +192,28 @@ export type DemoCallResult =
   | { allowed: true; language: Language; turns: Call["transcript"]; extraction: NonNullable<Call["extraction"]> }
   | { allowed: false; reason: string };
 
+export type Session = { user: User; shop: Shop };
+
+/** The identifier is either a 10-digit Indian mobile or an email address. */
+export type SignInInput = { identifier: string; password: string };
+export type SignUpInput = {
+  phone: string;
+  email?: string;
+  password: string;
+  ownerName: string;
+  shopName: string;
+  language: Language;
+};
+
 export interface UdhaarApi {
+  /** Returns the active session, or null when no one is signed in. */
+  getSession(): Promise<Session | null>;
+  /** Throws on invalid credentials. */
+  signIn(input: SignInInput): Promise<Session>;
+  /** Throws if the phone is already registered or validation fails. */
+  signUp(input: SignUpInput): Promise<Session>;
+  signOut(): Promise<void>;
+
   getShop(): Promise<Shop>;
   updateShop(patch: Partial<Omit<Shop, "id">>): Promise<Shop>;
 
