@@ -43,7 +43,10 @@ export const Shop = z.object({
   callingHours: CallingHours,
   reminderGapDays: z.number().int().min(1).max(14),
   maxCallMinutes: z.number().int().min(1).max(10),
+  /** The evening voice summary call to the shopkeeper. */
+  reportEnabled: z.boolean(),
   reportTime: z.string().regex(/^\d{2}:\d{2}$/),
+  reportLanguage: Language,
   /** Mirrors Bolna's bypass_call_guardrails flag. Only for demos outside calling hours. */
   demoBypassHours: z.boolean(),
 });

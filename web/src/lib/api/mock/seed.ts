@@ -8,7 +8,7 @@ import type { MockDb } from "./types";
  * so the demo always looks current. Phone numbers are fake and always shown masked.
  */
 
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 export const SHOP_ID = "s1";
 export const DEMO_USER_ID = "u-demo";
 /** 10-digit form the shopkeeper types. Stored on the user as "+919000000001". */
@@ -164,7 +164,9 @@ export function createSeed(now: Date = new Date()): MockDb {
       callingHours: { start: 8, end: 19 },
       reminderGapDays: 3,
       maxCallMinutes: 3,
+      reportEnabled: true,
       reportTime: "20:00",
+      reportLanguage: "bn",
       demoBypassHours: false,
     },
     customers,

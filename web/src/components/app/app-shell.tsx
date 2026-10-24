@@ -15,14 +15,13 @@ import {
   Ellipsis,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Suspense, useState } from "react";
-import { toast } from "sonner";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { api } from "@/lib/api";
-import { useApiMutation, useShop } from "@/lib/api/hooks";
+import { useShop } from "@/lib/api/hooks";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { ProfileMenu } from "./profile-menu";
 import { ThemeToggle } from "./theme-toggle";
 
 type NavItem = { href: string; label: string; short?: string; icon: LucideIcon; exact?: boolean };
@@ -156,9 +155,6 @@ function MobileTabs({ pathname }: { pathname: string | null }) {
                 </Link>
               ))}
             </div>
-            <div className="mt-4 flex justify-center">
-              <SignOutButton className="rounded-md border px-4 py-2 text-sm" />
-            </div>
           </SheetContent>
         </Sheet>
       </div>
@@ -168,26 +164,6 @@ function MobileTabs({ pathname }: { pathname: string | null }) {
 
 function MobileTabsWithPath() {
   return <MobileTabs pathname={usePathname()} />;
-}
-
-function SignOutButton({ className }: { className?: string }) {
-  const t = useT().auth;
-  const router = useRouter();
-  const signOut = useApiMutation(() => api.signOut());
-  return (
-    <button
-      type="button"
-      className={cn("text-xs text-muted-foreground hover:text-foreground disabled:opacity-50", className)}
-      disabled={signOut.isPending}
-      onClick={async () => {
-        await signOut.mutateAsync();
-        toast.success(t.signedOut);
-        router.replace("/login");
-      }}
-    >
-      {t.signOut}
-    </button>
-  );
 }
 
 export function AppShell({ banner, children }: { banner: React.ReactNode; children: React.ReactNode }) {
@@ -201,12 +177,14 @@ export function AppShell({ banner, children }: { banner: React.ReactNode; childr
         <Suspense fallback={<SidebarLinks pathname={null} />}>
           <SidebarLinksWithPath />
         </Suspense>
-        <div className="mt-auto flex items-center justify-between gap-2 px-2">
-          <Link href="/" className="text-xs text-muted-foreground hover:text-foreground">
+        <div className="mt-auto space-y-2">
+          <Link href="/" className="block px-2 text-xs text-muted-foreground hover:text-foreground">
             {t.nav.website}
           </Link>
-          <SignOutButton />
-          <ThemeToggle />
+          <div className="flex items-center gap-1 border-t pt-3">
+            <ProfileMenu full />
+            <ThemeToggle />
+          </div>
         </div>
       </aside>
 
@@ -214,7 +192,10 @@ export function AppShell({ banner, children }: { banner: React.ReactNode; childr
         {banner}
         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b bg-background/95 px-4 py-2.5 backdrop-blur lg:hidden">
           <Brand />
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <ProfileMenu />
+          </div>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-5 pb-28 sm:px-6 lg:px-8 lg:pt-8 lg:pb-12">{children}</main>
         <Suspense fallback={<MobileTabs pathname={null} />}>
