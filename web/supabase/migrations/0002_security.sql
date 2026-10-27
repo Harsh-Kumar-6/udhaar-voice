@@ -2,6 +2,17 @@
 -- Signed-in shopkeepers reach only their own shop's rows. Server jobs (webhooks, the call dispatcher,
 -- sign-up) use the service role key, which bypasses these rules and never reaches the browser.
 
+-- Table access is granted explicitly: new tables are not exposed to the Data API by default.
+-- Anonymous visitors get nothing; signed-in users get only what the policies below allow.
+grant usage on schema public to authenticated, service_role;
+grant select, insert, update, delete on all tables in schema public to service_role;
+grant usage, select on all sequences in schema public to authenticated, service_role;
+grant select, update on profiles, shops to authenticated;
+grant select, insert, update, delete on
+  shop_settings, customers, khata_imports, ledger_entries, payments, reminder_batches,
+  calls, call_events, promises, disputes, notes, khata_import_changes
+  to authenticated;
+
 -- The signed-in user's shop. security definer so it can read shops without recursing into its policy.
 create function my_shop_id() returns uuid
   language sql
