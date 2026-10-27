@@ -16,6 +16,7 @@ export const dashboard = {
   },
   live: {
     title: (done: number, total: number) => `Calling customers: ${done} of ${total} done`,
+    scheduled: (total: number, when: string) => `${total} ${total === 1 ? "call" : "calls"} scheduled for ${when}`,
     waiting: (n: number) => `${n} waiting`,
     watch: "Watch",
   },

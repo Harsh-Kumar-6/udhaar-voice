@@ -42,7 +42,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import type { CustomerDetail } from "@/lib/api/contract";
-import { useApiMutation, useCustomer, useReminderCandidates, useShop } from "@/lib/api/hooks";
+import { attempt, useApiMutation, useCustomer, useReminderCandidates, useShop } from "@/lib/api/hooks";
 import { formatINR, isPromiseBroken, normalizeIndianMobile, toDateKey, upiLink, whatsappShareLink } from "@/lib/domain/rules";
 import type { PaymentPromise } from "@/lib/domain/types";
 import { useT } from "@/lib/i18n";
@@ -224,7 +224,9 @@ function CustomerActions({ d }: { d: CustomerDetail }) {
   const scheduledCall = d.calls.find((k) => k.status === "scheduled" || k.status === "queued");
 
   const callAt = async (at: string) => {
-    const r = await schedule.mutateAsync({ customerIds: [d.customer.id], at, language: "auto", bypassHours: shop.data?.demoBypassHours ?? false });
+    const done = await attempt(schedule.mutateAsync({ customerIds: [d.customer.id], at, language: "auto", bypassHours: shop.data?.demoBypassHours ?? false }));
+    if (!done) return false;
+    const r = done.value;
     if (r.outsideHours) {
       const message = at === "now" ? c.outsideHours : t.batches.outsideHours;
       toast.error(message(hourLabel(r.outsideHours.start), hourLabel(r.outsideHours.end)));
@@ -305,8 +307,7 @@ function CustomerActions({ d }: { d: CustomerDetail }) {
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={async () => {
-              await update.mutateAsync({ optedOut: !d.customer.optedOut });
-              toast.success(d.customer.optedOut ? c.optedIn : c.optedOut);
+              if (await attempt(update.mutateAsync({ optedOut: !d.customer.optedOut }))) toast.success(d.customer.optedOut ? c.optedIn : c.optedOut);
             }}
           >
             <PhoneOff /> {d.customer.optedOut ? c.actions.optIn : c.actions.optOut}
@@ -421,7 +422,7 @@ function PaymentDialog({ open, onOpenChange, customerId, suggested }: { open: bo
     e.preventDefault();
     const value = Math.round(Number(amount));
     if (!Number.isFinite(value) || value <= 0) return setError(p.invalid);
-    await pay.mutateAsync({ customerId, amount: value, method, date: toDateKey(new Date()) });
+    if (!(await attempt(pay.mutateAsync({ customerId, amount: value, method, date: toDateKey(new Date()) })))) return;
     toast.success(p.saved(formatINR(value)));
     onOpenChange(false);
   };
@@ -467,7 +468,7 @@ function EntryDialog({ open, onOpenChange, customerId }: { open: boolean; onOpen
     ev.preventDefault();
     const value = Math.round(Number(amount));
     if (!Number.isFinite(value) || value <= 0 || !items.trim()) return setError(e.invalid);
-    await add.mutateAsync({ customerId, amount: value, items: items.trim(), date: toDateKey(new Date()), source: "manual" });
+    if (!(await attempt(add.mutateAsync({ customerId, amount: value, items: items.trim(), date: toDateKey(new Date()), source: "manual" })))) return;
     toast.success(e.saved(formatINR(value)));
     setAmount("");
     setItems("");
@@ -512,8 +513,9 @@ function PhoneDialog({ open, onOpenChange, current, onSave }: { open: boolean; o
     const phone = normalizeIndianMobile(value);
     if (!phone) return setError(p.invalid);
     setSaving(true);
-    await onSave(phone);
+    const saved = await attempt(onSave(phone));
     setSaving(false);
+    if (!saved) return;
     toast.success(p.saved);
     onOpenChange(false);
   };

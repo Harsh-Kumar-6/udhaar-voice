@@ -34,7 +34,7 @@ import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } f
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import type { AttentionItem } from "@/lib/api/contract";
-import { useApiMutation, useDashboard, useShop } from "@/lib/api/hooks";
+import { attempt, useApiMutation, useDashboard, useShop } from "@/lib/api/hooks";
 import { formatINR } from "@/lib/domain/rules";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -95,10 +95,15 @@ export function DashboardScreen() {
           href="/app/calls"
           className="flex items-center gap-4 rounded-xl border border-primary/30 bg-accent px-4 py-3 transition-colors hover:bg-accent/70"
         >
-          <PhoneCall className="size-5 shrink-0 animate-pulse text-primary" />
+          <PhoneCall className={cn("size-5 shrink-0 text-primary", data.activeBatch.batch.status === "running" && "animate-pulse")} />
           <div className="min-w-0 flex-1 space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-medium">
-              <span>{d.live.title(data.activeBatch.counts.done, data.activeBatch.calls.length)}</span>
+              {/* "Calling" only once dialing has started; before that, when it will. */}
+              <span>
+                {data.activeBatch.batch.status === "running"
+                  ? d.live.title(data.activeBatch.counts.done, data.activeBatch.calls.length)
+                  : d.live.scheduled(data.activeBatch.calls.length - data.activeBatch.counts.removed, format(parseISO(data.activeBatch.batch.scheduledAt), "EEE d MMM, h:mm a"))}
+              </span>
               <span className="text-xs text-muted-foreground">{d.live.waiting(data.activeBatch.counts.waiting)}</span>
             </div>
             <Progress value={(data.activeBatch.counts.done / Math.max(1, data.activeBatch.calls.length)) * 100} />
@@ -212,7 +217,9 @@ function AttentionRow({ item }: { item: AttentionItem }) {
         variant="outline"
         disabled={schedule.isPending}
         onClick={async () => {
-          const r = await schedule.mutateAsync({ customerIds: [item.customer.id], at: nextMorning(), language: "auto", bypassHours: false });
+          const done = await attempt(schedule.mutateAsync({ customerIds: [item.customer.id], at: nextMorning(), language: "auto", bypassHours: false }));
+          if (!done) return;
+          const r = done.value;
           if (r.batch) toast.success(d.attention.callbackScheduled(item.customer.name));
           else toast.error(r.skipped[0]?.reason ?? "Couldn't schedule");
         }}

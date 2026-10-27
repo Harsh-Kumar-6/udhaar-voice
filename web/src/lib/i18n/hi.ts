@@ -108,6 +108,7 @@ export const hi: Dictionary = {
     },
     live: {
       title: (done: number, total: number) => `ग्राहकों को कॉल चल रही है: ${total} में से ${done} पूरी`,
+      scheduled: (total: number, when: string) => `${when} के लिए ${total} कॉल तय हैं`,
       waiting: (n: number) => `${n} इंतज़ार में`,
       watch: "देखें",
     },

@@ -22,7 +22,7 @@ import { Transcript } from "@/components/app/transcript";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import { useApiMutation, useCall, useShop } from "@/lib/api/hooks";
+import { attempt, useApiMutation, useCall, useShop } from "@/lib/api/hooks";
 import type { CallDetail, QueueSpot } from "@/lib/api/contract";
 import type { Call } from "@/lib/domain/types";
 import { useNow } from "@/hooks/use-now";
@@ -202,8 +202,7 @@ function LivePanel({ call, queue }: { call: Call; queue?: QueueSpot }) {
             size="lg"
             onClick={async () => {
               if (!window.confirm(d.cancelConfirm)) return;
-              await cancel.mutateAsync();
-              toast.success(d.cancelled);
+              if (await attempt(cancel.mutateAsync())) toast.success(d.cancelled);
             }}
             disabled={reschedule.isPending || cancel.isPending}
           >
@@ -215,7 +214,9 @@ function LivePanel({ call, queue }: { call: Call; queue?: QueueSpot }) {
             pending={reschedule.isPending}
             initialAt={call.scheduledAt}
             onSubmit={async (iso) => {
-              const r = await reschedule.mutateAsync(iso);
+              const done = await attempt(reschedule.mutateAsync(iso));
+              if (!done) return;
+              const r = done.value;
               if (r.outsideHours) return void toast.error(t.batches.outsideHours(hourLabel(r.outsideHours.start), hourLabel(r.outsideHours.end)));
               toast.success(d.rescheduled(format(parseISO(r.call.scheduledAt), "EEE h:mm a")));
               setEditOpen(false);

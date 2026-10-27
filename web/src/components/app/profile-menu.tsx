@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { api } from "@/lib/api";
-import { useApiMutation, useSession } from "@/lib/api/hooks";
+import { attempt, useApiMutation, useSession } from "@/lib/api/hooks";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -75,7 +75,7 @@ export function ProfileMenu({ full = false }: { full?: boolean }) {
         <DropdownMenuItem
           disabled={signOut.isPending}
           onSelect={async () => {
-            await signOut.mutateAsync(undefined);
+            if (!(await attempt(signOut.mutateAsync(undefined)))) return;
             toast.success(t.auth.signedOut);
             router.replace("/login");
           }}

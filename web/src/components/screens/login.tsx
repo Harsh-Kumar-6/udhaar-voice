@@ -22,7 +22,7 @@ export function LoginScreen() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const signIn = useApiMutation((input: SignInInput) => api.signIn(input));
+  const signIn = useApiMutation((input: SignInInput) => api.signIn(input), { quiet: true });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

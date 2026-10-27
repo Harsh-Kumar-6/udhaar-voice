@@ -76,6 +76,14 @@ async function cancelCalls(sb: SupabaseClient, shopId: string, callIds: string[]
   await addEvents(sb, shopId, cancelled.map((r: { id: string }) => r.id), "cancelled", "Cancelled by the shopkeeper");
 }
 
+/** Supabase Auth can't look up a user by email, so the database answers (0004_email_lookup.sql). */
+async function emailInUse(email: string, except?: string): Promise<boolean> {
+  const result = await adminClient().rpc("email_in_use", { p_email: email, p_except: except ?? null });
+  // Before that migration runs, fall back to Supabase Auth's own duplicate check.
+  if (result.error?.code === "PGRST202") return false;
+  return check(result) as boolean;
+}
+
 let transcriptions = 0;
 
 export const serverApi: ServerApi = {
@@ -101,6 +109,7 @@ export const serverApi: ServerApi = {
     const admin = adminClient();
     const taken = maybe(await admin.from("profiles").select("id").eq("phone", form.phone).maybeSingle());
     if (taken) throw new Error("That number is already registered. Try signing in.");
+    if (await emailInUse(form.email)) throw new Error("That email is already registered. Try signing in.");
 
     // Created confirmed, so no confirmation email is needed.
     const created = await admin.auth.admin.createUser({ email: form.email, password: form.password, email_confirm: true });
@@ -138,8 +147,9 @@ export const serverApi: ServerApi = {
     const owner = maybe(await admin.from("profiles").select("id").eq("phone", form.phone).neq("id", session.user.id).maybeSingle());
     if (owner) throw new Error("That number belongs to another account.");
     if (form.email !== session.user.email?.toLowerCase()) {
+      if (await emailInUse(form.email, session.user.id)) throw new Error("That email belongs to another account.");
       const { error } = await admin.auth.admin.updateUserById(session.user.id, { email: form.email, email_confirm: true });
-      if (error) throw new Error(/already/i.test(error.message) || error.code === "email_exists" ? "That email belongs to another account." : error.message);
+      if (error) throw new Error(`Couldn't change the email: ${error.message}`);
     }
     maybe(await sb.from("profiles").update({ name: form.name, phone: form.phone }).eq("id", session.user.id));
     maybe(await sb.from("shops").update({ name: form.shopName, upi_id: form.upiId || null }).eq("id", session.shop.id));
@@ -150,7 +160,9 @@ export const serverApi: ServerApi = {
 
   updateShop: async ({ sb }, patch) => {
     const { shop } = await requireSession(sb);
-    const next = ShopSchema.parse({ ...shop, ...patch, id: shop.id });
+    const parsed = ShopSchema.safeParse({ ...shop, ...patch, id: shop.id });
+    if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Check the settings and try again.");
+    const next = parsed.data;
     maybe(
       await sb
         .from("shop_settings")
@@ -189,7 +201,9 @@ export const serverApi: ServerApi = {
       row.phone = phone;
     }
     await requireSession(ctx.sb);
-    const updated = maybe(await ctx.sb.from("customers").update(row).eq("id", id).select("id").maybeSingle());
+    const result = await ctx.sb.from("customers").update(row).eq("id", id).select("id").maybeSingle();
+    if (result.error?.code === "23505") throw new Error("Another customer already has this number.");
+    const updated = maybe(result);
     if (!updated) throw new Error("Customer not found");
     const customer = (await shopData(ctx)).customers.find((c) => c.id === id);
     if (!customer) throw new Error("Customer not found");

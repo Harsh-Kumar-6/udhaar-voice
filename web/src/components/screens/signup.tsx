@@ -29,7 +29,7 @@ export function SignupScreen() {
   const [password, setPassword] = useState("");
   const [language, setLanguage] = useState<Language>("bn");
   const [error, setError] = useState<string | null>(null);
-  const signUp = useApiMutation((input: SignUpInput) => api.signUp(input));
+  const signUp = useApiMutation((input: SignUpInput) => api.signUp(input), { quiet: true });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

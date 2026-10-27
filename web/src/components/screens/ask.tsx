@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import type { AskAnswer } from "@/lib/api/contract";
-import { useApiMutation } from "@/lib/api/hooks";
+import { attempt, useApiMutation } from "@/lib/api/hooks";
 import { useNow } from "@/hooks/use-now";
 import { useVoiceRecorder } from "@/hooks/use-voice-recorder";
 import { useT } from "@/lib/i18n";
@@ -38,12 +38,12 @@ export function AskScreen() {
     if (!q || ask.isPending) return;
     setText("");
     setMessages((m) => [...m, { id: nextId.current++, role: "user", text: q, spoken }]);
-    const answer = await ask.mutateAsync(q);
-    setMessages((m) => [...m, { id: nextId.current++, role: "assistant", answer }]);
+    const answered = await attempt(ask.mutateAsync(q));
+    if (answered) setMessages((m) => [...m, { id: nextId.current++, role: "assistant", answer: answered.value }]);
   };
 
   const voice = useVoiceRecorder();
-  const transcribe = useApiMutation(api.transcribe);
+  const transcribe = useApiMutation(api.transcribe, { quiet: true });
   const busy = ask.isPending || transcribe.isPending;
 
   const toggleVoice = async () => {

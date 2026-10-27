@@ -46,6 +46,8 @@ export function maybe<T>(result: Result<T>): T | null {
 
 function friendly(error: { message: string; code?: string }): string {
   if (error.code === "23505") return "That already exists.";
+  // A foreign key to a row that isn't there, or belongs to another shop.
+  if (error.code === "23503") return "Customer not found";
   if (error.code === "23514") return "Some details aren't valid. Check them and try again.";
   return error.message;
 }

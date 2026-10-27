@@ -15,7 +15,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import type { KhataExtraction, KhataRow, KhataRowAction, KhataSaveResult } from "@/lib/api/contract";
-import { useApiMutation, useCustomers, useKhataImports } from "@/lib/api/hooks";
+import { attempt, useApiMutation, useCustomers, useKhataImports } from "@/lib/api/hooks";
 import { formatINR, normalizeIndianMobile } from "@/lib/domain/rules";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -190,8 +190,9 @@ function Review({
     for (const r of fresh) if (r.phone && !normalizeIndianMobile(r.phone)) errors[r.id] = true;
     setPhoneErrors(errors);
     if (Object.keys(errors).length) return toast.error(t.invalidPhone);
-    const result = await save.mutateAsync({ scanId: scan.scanId, source: scan.source, rows });
-    onSaved({ ...result, withoutPhone: fresh.filter((r) => !r.phone).length });
+    const saved = await attempt(save.mutateAsync({ scanId: scan.scanId, source: scan.source, rows }));
+    if (!saved) return;
+    onSaved({ ...saved.value, withoutPhone: fresh.filter((r) => !r.phone).length });
   };
 
   return (
@@ -310,8 +311,9 @@ function UndoImport({ importId, onUndone, compact = false }: { importId: string;
           size="sm"
           disabled={undo.isPending}
           onClick={async () => {
-            const r = await undo.mutateAsync(importId);
-            toast.success(t.done(r.removed, r.restored));
+            const undone = await attempt(undo.mutateAsync(importId));
+            if (!undone) return;
+            toast.success(t.done(undone.value.removed, undone.value.restored));
             setConfirming(false);
             onUndone?.();
           }}

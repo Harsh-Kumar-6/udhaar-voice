@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { api } from ".";
 
 /** Data hooks used by every screen. Keys are grouped so a write can refresh everything at once. */
@@ -21,8 +22,24 @@ export const useDailyReport = () => useQuery({ queryKey: ["report"], queryFn: ()
 export const useKhataImports = () => useQuery({ queryKey: ["khata-imports"], queryFn: () => api.listKhataImports() });
 export const useGraph = () => useQuery({ queryKey: ["graph"], queryFn: () => api.getGraph() });
 
-/** Wraps an API write. Everything is refetched afterwards, because any write can change any view. */
-export function useApiMutation<TInput, TResult>(fn: (input: TInput) => Promise<TResult>) {
+/**
+ * Wraps an API write. Everything is refetched afterwards, because any write can change any view.
+ * A failed write shows the server's message as a toast, unless `quiet` (the form shows it itself).
+ */
+export function useApiMutation<TInput, TResult>(fn: (input: TInput) => Promise<TResult>, options: { quiet?: boolean } = {}) {
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn: fn, onSuccess: () => queryClient.invalidateQueries() });
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => queryClient.invalidateQueries(),
+    onError: (err) => {
+      if (!options.quiet) toast.error(err instanceof Error ? err.message : String(err));
+    },
+  });
 }
+
+/** Awaits a write; `undefined` if it failed, which `useApiMutation` has already shown. */
+export const attempt = <T,>(write: Promise<T>): Promise<{ value: T } | undefined> =>
+  write.then(
+    (value) => ({ value }),
+    () => undefined,
+  );

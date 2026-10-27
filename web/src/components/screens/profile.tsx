@@ -33,7 +33,7 @@ const localPhone = (e164: string) => e164.replace(/^\+91/, "");
 
 function ProfileForm({ session: { user, shop } }: { session: Session }) {
   const { profile: t, customers } = useT();
-  const save = useApiMutation(api.updateProfile);
+  const save = useApiMutation(api.updateProfile, { quiet: true });
   const [draft, setDraft] = useState<ProfileInput>({
     name: user.name,
     phone: localPhone(user.phone),

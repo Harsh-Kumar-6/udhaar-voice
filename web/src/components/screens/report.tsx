@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { DailyReport } from "@/lib/api/contract";
-import { useApiMutation, useDailyReport, useShop } from "@/lib/api/hooks";
+import { attempt, useApiMutation, useDailyReport, useShop } from "@/lib/api/hooks";
 import { formatINR } from "@/lib/domain/rules";
 import { useT } from "@/lib/i18n";
 
@@ -126,8 +126,8 @@ function SpokenCard({ r }: { r: DailyReport }) {
             size="lg"
             disabled={send.isPending}
             onClick={async () => {
-              const call = await send.mutateAsync(undefined);
-              router.push(`/app/calls/${call.id}`);
+              const sent = await attempt(send.mutateAsync(undefined));
+              if (sent) router.push(`/app/calls/${sent.value.id}`);
             }}
           >
             <PhoneCall /> {send.isPending ? t.sending : t.send}

@@ -16,7 +16,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import type { BatchSummary, CallListItem, EligibleCustomer } from "@/lib/api/contract";
-import { useApiMutation, useReminderCandidates, useShop } from "@/lib/api/hooks";
+import { attempt, useApiMutation, useReminderCandidates, useShop } from "@/lib/api/hooks";
 import { isWithinCallingHours, toDateKey } from "@/lib/domain/rules";
 import type { CallOutcome } from "@/lib/domain/types";
 import { useT } from "@/lib/i18n";
@@ -59,12 +59,16 @@ export function NewBatchForm({ onScheduled }: { onScheduled: () => void }) {
     });
 
   const submit = async () => {
-    const r = await schedule.mutateAsync({
-      customerIds: [...selected],
-      at: mode === "now" ? "now" : requested.toISOString(),
-      language: "auto",
-      bypassHours: bypass,
-    });
+    const done = await attempt(
+      schedule.mutateAsync({
+        customerIds: [...selected],
+        at: mode === "now" ? "now" : requested.toISOString(),
+        language: "auto",
+        bypassHours: bypass,
+      }),
+    );
+    if (!done) return;
+    const r = done.value;
     if (r.outsideHours) return toast.error(t.outsideHours(hourLabel(r.outsideHours.start), hourLabel(r.outsideHours.end)));
     if (!r.batch) return toast.error(r.skipped[0]?.reason ?? "Nothing scheduled");
     toast.success(t.scheduled(r.batch.callIds.length), { description: r.skipped.length ? t.skipped(r.skipped.length) : undefined });
@@ -196,7 +200,9 @@ export function BatchCard({ b }: { b: BatchSummary }) {
     b.batch.status === "running" ? "bg-paid-soft text-paid" : b.batch.status === "scheduled" ? "bg-callback-soft text-callback" : "bg-muted text-muted-foreground";
 
   const moveTo = async (at: string) => {
-    const r = await move.mutateAsync({ at });
+    const done = await attempt(move.mutateAsync({ at }));
+    if (!done) return;
+    const r = done.value;
     // Outside calling hours nothing moves; the dialog stays open for another pick.
     if (r.outsideHours) return void toast.error(t.outsideHours(hourLabel(r.outsideHours.start), hourLabel(r.outsideHours.end)));
     toast.success(t.moved(format(parseISO(r.batch.scheduledAt), BATCH_TIME)));
@@ -241,8 +247,7 @@ export function BatchCard({ b }: { b: BatchSummary }) {
               size="sm"
               disabled={cancel.isPending}
               onClick={async () => {
-                await cancel.mutateAsync(b.batch.id);
-                toast.success(t.cancelled);
+                if (await attempt(cancel.mutateAsync(b.batch.id))) toast.success(t.cancelled);
               }}
             >
               {t.cancel}
@@ -290,8 +295,7 @@ function BatchCallRow({ item: { call, customer, queue } }: { item: CallListItem 
           onBlur={() => setConfirming(false)}
           onClick={async () => {
             if (!confirming) return setConfirming(true);
-            await remove.mutateAsync(call.id);
-            toast.success(t.removed(name));
+            if (await attempt(remove.mutateAsync(call.id))) toast.success(t.removed(name));
           }}
         >
           {confirming ? (

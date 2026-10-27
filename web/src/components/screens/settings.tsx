@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
-import { useApiMutation, useShop } from "@/lib/api/hooks";
+import { attempt, useApiMutation, useShop } from "@/lib/api/hooks";
 import { Shop as ShopSchema, type Language, type Shop } from "@/lib/domain/types";
 import { setAppLanguage, useAppLanguage, useT } from "@/lib/i18n";
 
@@ -55,8 +55,7 @@ function WorkflowForm({ shop }: { shop: Shop }) {
       return toast.error(s.invalid);
     }
     setInvalid(new Set());
-    await save.mutateAsync(parsed.data);
-    toast.success(s.saved);
+    if (await attempt(save.mutateAsync(parsed.data))) toast.success(s.saved);
   };
 
   return (
