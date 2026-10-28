@@ -222,6 +222,15 @@ describe("ask your khata", () => {
 });
 
 describe("evening report", () => {
+  it("never suggests calling a customer who asked not to be called", () => {
+    const db = fresh();
+    const today = "2026-10-21";
+    const sunita = db.customers.find((c) => c.id === "c02")!;
+    sunita.optedOut = true;
+    db.promises.push({ id: "p-today", customerId: "c02", amount: 400, dueDate: "2026-10-23", status: "open", createdAt: `${today}T05:00:00.000Z` });
+    expect(dailyReport(db, NOW).spoken.en).not.toMatch(/Call Sunita/);
+  });
+
   it("reads naturally when nobody promised anything today", () => {
     const r = dailyReport(fresh(), NOW);
     expect(r.spoken.en).toContain("No new promises today");

@@ -9,8 +9,12 @@ type DisputeKind = Dispute["kind"];
 const FINAL: CallStatus[] = ["completed", "no_answer", "busy", "failed", "cancelled"];
 export const isFinal = (s: CallStatus) => FINAL.includes(s);
 
-/** Bolna's execution status as ours. A call nobody spoke on counts as unanswered, not completed. */
-export function toCallStatus(e: Pick<Execution, "status" | "conversation_duration" | "answered_by_voice_mail">): CallStatus {
+/**
+ * Bolna's execution status as ours. "call-disconnected" comes before "completed" and carries no
+ * results yet, so the call still counts as in progress until "completed" arrives. A completed call
+ * nobody spoke on counts as unanswered.
+ */
+export function toCallStatus(e: Pick<Execution, "status" | "conversation_duration" | "answered_by_voice_mail" | "transcript">): CallStatus {
   const map: Record<ExecutionStatus, CallStatus> = {
     scheduled: "ringing",
     queued: "ringing",
@@ -18,7 +22,7 @@ export function toCallStatus(e: Pick<Execution, "status" | "conversation_duratio
     initiated: "ringing",
     ringing: "ringing",
     "in-progress": "in_progress",
-    "call-disconnected": "completed",
+    "call-disconnected": "in_progress",
     completed: "completed",
     busy: "busy",
     "no-answer": "no_answer",
@@ -29,7 +33,8 @@ export function toCallStatus(e: Pick<Execution, "status" | "conversation_duratio
     error: "failed",
   };
   const status = map[e.status] ?? "failed";
-  if (status === "completed" && (e.answered_by_voice_mail || !e.conversation_duration)) return "no_answer";
+  const someoneSpoke = /^\s*(user|customer|human)\s*:/im.test(e.transcript ?? "");
+  if (status === "completed" && (e.answered_by_voice_mail || (!e.conversation_duration && !someoneSpoke))) return "no_answer";
   return status;
 }
 
@@ -110,10 +115,11 @@ export function toExtraction(e: Pick<Execution, "extracted_data" | "summary">, s
   const kindSaid = present(findAnswer(data, EXTRACTIONS.disputeKind))?.toLowerCase().replace(/[\s-]+/g, "_");
   const disputeKind = DISPUTES.find((k) => k === kindSaid);
   const disputeReason = present(findAnswer(data, EXTRACTIONS.disputeReason));
-  const dispute =
-    outcome === "disputed" || disputeKind
-      ? { kind: disputeKind ?? "other", reason: disputeReason ?? "The customer disagreed with the amount.", amount: rupees(findAnswer(data, EXTRACTIONS.disputeAmount)) }
-      : undefined;
+  // A vague "other" on a call that wasn't about the dues (an opt-out, say) is not a dispute.
+  const disputed = outcome === "disputed" || disputeKind === "already_paid" || disputeKind === "wrong_amount";
+  const dispute = disputed
+    ? { kind: disputeKind ?? "other", reason: disputeReason ?? "The customer disagreed with the amount.", amount: rupees(findAnswer(data, EXTRACTIONS.disputeAmount)) }
+    : undefined;
 
   const callback = present(findAnswer(data, EXTRACTIONS.callbackAt));
   const callbackMatch = callback ? /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})$/.exec(callback) : null;

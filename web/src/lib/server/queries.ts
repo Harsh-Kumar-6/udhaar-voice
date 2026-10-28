@@ -280,7 +280,7 @@ export function dailyReportWithScript(db: ShopData, now: Date): { report: DailyR
   const collected = payments.reduce((s, p) => s + p.payment.amount, 0);
 
   // Bengali-script names go into the Bengali speech only for Bengali speakers; others keep the Latin name.
-  const person = (c: Customer) => ({ name: c.name, spokenName: c.language === "bn" ? (c.nameNative ?? c.name) : c.name });
+  const person = (c: Customer) => ({ name: c.name, spokenName: c.language === "bn" ? (c.nameNative ?? c.name) : c.name, optedOut: c.optedOut });
   const script = buildReportScript({
     ownerFirstName: db.shop.ownerName.split(" ")[0],
     collected,

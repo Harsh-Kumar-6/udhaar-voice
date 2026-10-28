@@ -16,7 +16,7 @@ export const REMINDER_WELCOME = "{greeting}";
 
 export const REMINDER_PROMPT = `You are Asha, a polite voice assistant calling on behalf of {shop_name}, a neighbourhood shop in India. You are an AI, and you say so.
 
-Speak only {language_name}, in short, warm, everyday sentences, the way people at a local shop talk. If the customer clearly prefers another of Bengali, Hindi or English, switch to it.
+Speak only {language_name}, in short, warm, everyday sentences, the way people at a local shop talk.
 
 What you know:
 - Customer: {customer_name}
@@ -53,9 +53,9 @@ Today's summary:
 {summary}
 
 How the call goes:
-1. Read the summary in your own words, a few sentences at a time. Keep every name and amount exactly as given.
-2. Ask if they have a question about it. Answer only from the summary; if it isn't there, say they can see it in the app.
-3. Say goodbye. Keep the call under 3 minutes.`;
+1. Your greeting has already read the summary and asked if they have a question.
+2. Answer questions only from the summary, keeping every name and amount exactly as given. If something isn't there, say they can see it in the app. If they ask you to repeat it, read it again in your own words.
+3. When they have no more questions, say goodbye. Keep the call under 3 minutes.`;
 
 /** What the greeting says, in each language. The agent waits for the answer before going on. */
 export function reminderGreeting(language: Language, customerName: string, shopName: string): string {
@@ -64,11 +64,27 @@ export function reminderGreeting(language: Language, customerName: string, shopN
   return `Hello, am I speaking with ${customerName}? I'm calling from ${shopName}.`;
 }
 
-export function reportGreeting(language: Language, ownerName: string): string {
-  if (language === "bn") return `নমস্কার ${ownerName}, আমি আশা। আজকের হিসেব শোনাচ্ছি।`;
-  if (language === "hi") return `नमस्ते ${ownerName} जी, मैं आशा हूँ। आज का हिसाब सुनाती हूँ।`;
-  return `Hello ${ownerName}, this is Asha with today's summary.`;
+/**
+ * The summary call's opening: the whole summary, then a question. A Bolna agent waits for the other
+ * person after its greeting, so a greeting that only announced the summary left the owner in silence.
+ * `spoken` is the report's spoken text in Bengali or English, which already starts with a hello.
+ */
+export function reportGreeting(language: Language, ownerName: string, spoken: { bn: string; en: string }): string {
+  if (language === "bn") return `${spoken.bn} কোনো প্রশ্ন আছে?`;
+  // There is no Hindi summary text yet; the English one is read after a Hindi hello.
+  if (language === "hi") return `नमस्ते ${ownerName} जी, मैं आशा हूँ। ${spoken.en} कोई सवाल है?`;
+  return `${spoken.en} Any questions?`;
 }
+
+/** When Bolna ends the call itself (its "hang up using a prompt" setting). */
+export const HANGUP_RULE =
+  "End the call when Asha has said goodbye or thanked the person at the end, when the person said goodbye, when it is a wrong number, or when the person asked not to be called again.";
+
+/** Bolna's own lines, which otherwise exist only in English and Hindi. */
+export const CALL_LINES = {
+  hangup: { en: "Goodbye!", hi: "धन्यवाद, नमस्ते।", bn: "ধন্যবাদ, নমস্কার।" },
+  stillThere: { en: "Hello, are you still there?", hi: "हैलो, क्या आप लाइन पर हैं?", bn: "হ্যালো, আপনি কি লাইনে আছেন?" },
+};
 
 /* ---------------------------------------------------------------- extractions */
 
@@ -105,9 +121,9 @@ const DISPUTE_KINDS: { value: DisputeKind; condition: string }[] = [
   { value: "other", condition: "Any other disagreement about the dues." },
 ];
 
-/** Bolna disposition bodies, as `POST /dispositions/` takes them. */
+/** Bolna disposition bodies, as `POST /dispositions/` takes them (each is linked to one agent). */
 export function extractionDefinitions(agentId: string) {
-  const base = { category: EXTRACTION_CATEGORY, agent_ids: [agentId] };
+  const base = { category: EXTRACTION_CATEGORY, agent_id: agentId };
   const text = (name: string, question: string) => ({ ...base, name, question, is_subjective: true, is_objective: false, subjective_type: "text" });
   return [
     {

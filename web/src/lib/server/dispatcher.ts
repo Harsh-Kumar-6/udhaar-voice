@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { format } from "date-fns";
-import { dialOrder, formatINR, isWithinCallingHours, toDateKey } from "@/lib/domain/rules";
+import { dialOrder, formatINR, isWithinCallingHours, spokenName, toDateKey } from "@/lib/domain/rules";
 import type { Language, Shop } from "@/lib/domain/types";
 import { BolnaError, getExecution, makeCall } from "./bolna/client";
 import { agentIds, bolnaConfigured } from "./bolna/config";
@@ -208,7 +208,7 @@ async function placeCall(admin: SupabaseClient, call: QueuedCall, shop: Shop, no
       shop_name: shop.name,
       language_name: LANGUAGE_NAMES[call.language],
       summary: call.language === "bn" ? report.spoken.bn : report.spoken.en,
-      greeting: reportGreeting(call.language, owner),
+      greeting: reportGreeting(call.language, owner, report.spoken),
     };
   } else {
     const detail = call.customerId ? customerDetail(db, call.customerId, now) : null;
@@ -216,7 +216,7 @@ async function placeCall(admin: SupabaseClient, call: QueuedCall, shop: Shop, no
     const c = detail.customer;
     to = call.toNumber || c.phone;
     if (!to) throw new Error("The customer has no phone number.");
-    const spoken = call.language !== "en" && c.nameNative ? c.nameNative : c.name;
+    const spoken = spokenName(c, call.language);
     const items = detail.entries.slice(0, 3).map((e) => e.items).filter(Boolean).join(", ") || "items from the shop";
     userData = {
       customer_name: spoken,

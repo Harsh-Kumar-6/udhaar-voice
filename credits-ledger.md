@@ -8,7 +8,14 @@ Rate observed: $0.06/min (bundled models, Bolna shared number). Own provider key
 | Date | Event | Minutes | Cost | Balance after |
 |---|---|---|---|---|
 | 2026-10-19/21 | Sign-up credit (Roshan's account) | | +$5.00 | $5.00 |
-| 2026-10-21 | Template agent test call ("(v2) Onboarding - En + Hi"), ended by asking it to hang up | ~8 | -$0.51 | **$4.49** (~75 min) |
+| 2026-10-21 | Template agent test call ("(v2) Onboarding - En + Hi"), ended by asking it to hang up | ~8 | -$0.51 | $4.49 |
+| 2026-10-28 | Test call 1: Deepak (Hindi), promise ₹500 by Fri 30 Oct | 0.6 | -$0.06 | $4.43 |
+| 2026-10-28 | Test call 2: Tapas (Bengali), "already paid" (heard as a promise: Bengali transcription) | 1.3 | -$0.09 | $4.34 |
+| 2026-10-28 | Test call 3: Deepak (Hindi), call back tomorrow 6 PM | 0.9 | -$0.06 | $4.28 |
+| 2026-10-28 | Test call 4: Tapas (Hindi), wrong number | 0.5 | -$0.03 | $4.25 |
+| 2026-10-28 | Test call 5: Deepak (Hindi), asked not to be called again | 0.9 | -$0.06 | $4.19 |
+| 2026-10-28 | Test call 6: evening summary (Bengali); greeting only, summary not read (fixed) | 0.3 | -$0.03 | $4.16 |
+| 2026-10-28 | Test call 7: evening summary (Bengali), read in full, question answered | 0.9 | -$0.06 | **$4.10** (~68 min) |
 
 ## Planned: first real calls (call pipeline, 28 Oct)
 

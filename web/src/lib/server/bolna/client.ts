@@ -23,7 +23,8 @@ async function request<T>(method: "GET" | "POST" | "PUT" | "PATCH", path: string
     json = { message: text.slice(0, 300) };
   }
   if (!res.ok) {
-    const message = (json as { message?: string } | null)?.message ?? JSON.stringify(json) ?? res.statusText;
+    const raw = (json as { message?: unknown; detail?: unknown } | null)?.message ?? (json as { detail?: unknown } | null)?.detail ?? json;
+    const message = typeof raw === "string" ? raw : JSON.stringify(raw) ?? res.statusText;
     throw new BolnaError(res.status, `Bolna ${method} ${path} failed (${res.status}): ${message}`);
   }
   return json as T;
@@ -96,8 +97,29 @@ export const getExecution = (executionId: string) => request<Execution>("GET", `
 
 export const patchAgent = (agentId: string, body: unknown) => request<unknown>("PATCH", `/v2/agent/${encodeURIComponent(agentId)}`, body);
 
+/** The agent as Bolna stores it: settings at the top level, `tasks[0].tools_config` for audio and languages. */
+export type StoredAgent = Record<string, unknown> & {
+  tasks: {
+    task_config?: Record<string, unknown>;
+    tools_config: {
+      multilingual_config?: {
+        enabled: boolean;
+        language_switch_trigger?: string;
+        languages: Record<string, { system_prompt?: string | null; handoff_message?: string | null }>;
+      };
+    };
+  }[];
+};
+
+export const getAgent = (agentId: string) => request<StoredAgent>("GET", `/v2/agent/${encodeURIComponent(agentId)}`);
+
+/** Full update. Every setting is sent back as read, so only what the caller changed changes. */
+export const putAgent = (agentId: string, body: unknown) => request<unknown>("PUT", `/v2/agent/${encodeURIComponent(agentId)}`, body);
+
 export type Disposition = { id: string; name: string; agent_ids?: string[] };
 
-export const listDispositions = () => request<Disposition[] | { data?: Disposition[]; dispositions?: Disposition[] }>("GET", "/dispositions/");
+/** The dispositions linked to one agent. */
+export const listDispositions = async (agentId: string): Promise<Disposition[]> =>
+  (await request<{ agent_dispositions?: Disposition[] }>("GET", `/dispositions/?agent_id=${encodeURIComponent(agentId)}`)).agent_dispositions ?? [];
 export const createDisposition = (body: unknown) => request<Disposition>("POST", "/dispositions/", body);
 export const updateDisposition = (id: string, body: unknown) => request<Disposition>("PUT", `/dispositions/${encodeURIComponent(id)}`, body);

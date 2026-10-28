@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  spokenName,
   balanceOf,
   batchStatus,
   buildMemory,
@@ -246,5 +247,16 @@ describe("canChangeBatchTime", () => {
     expect(canChangeBatchTime(["queued", "scheduled"])).toBe(false);
     expect(canChangeBatchTime(["completed", "scheduled"])).toBe(false);
     expect(canChangeBatchTime(["cancelled"])).toBe(false);
+  });
+});
+
+describe("spoken name", () => {
+  it("uses the khata's native name only when it's in the call language's script", () => {
+    const tapas = { name: "Tapas Biswas", nameNative: "তাপস বিশ্বাস" };
+    expect(spokenName(tapas, "bn")).toBe("তাপস বিশ্বাস");
+    expect(spokenName(tapas, "hi")).toBe("Tapas Biswas");
+    expect(spokenName({ name: "Ramesh Yadav", nameNative: "रमेश यादव" }, "hi")).toBe("रमेश यादव");
+    expect(spokenName(tapas, "en")).toBe("Tapas Biswas");
+    expect(spokenName({ name: "Haru Kaka" }, "bn")).toBe("Haru Kaka");
   });
 });

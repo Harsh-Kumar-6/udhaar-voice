@@ -453,7 +453,8 @@ export function buildReminderScript(persona: Persona, ctx: ScriptContext): Scrip
 
 /** The evening report call to the shopkeeper, in Bengali. */
 /** A person in the report: Latin name for English text, Bengali-script name for the spoken Bengali. */
-type ReportPerson = { name: string; spokenName: string };
+/** `optedOut`: asked not to be called, so never suggested as the first call. */
+type ReportPerson = { name: string; spokenName: string; optedOut?: boolean };
 
 export function buildReportScript(input: {
   ownerFirstName: string;
@@ -498,7 +499,7 @@ export function buildReportScript(input: {
   if (input.productRequests.length)
     lines.push(["agent", `খরিদ্দাররা চেয়েছেন: ${input.productRequests.join(", ")}।`, `Customers asked for: ${input.productRequests.join(", ")}.`]);
   lines.push(["shopkeeper", "ঠিক আছে। কাল সকালে কাকে আগে ফোন করব?", "Okay. Whom should I call first tomorrow morning?"]);
-  const first = input.dueTomorrow[0] ?? input.promisesMade[0];
+  const first = [...input.dueTomorrow, ...input.promisesMade].find((p) => !p.optedOut);
   lines.push([
     "agent",
     first ? `${first.spokenName}-কে আগে ফোন করুন, ওঁর ${bnNum(first.amount)} টাকা দেওয়ার কথা।` : "কাল কারও দেওয়ার কথা নেই, তাই কোনো তাড়া নেই।",

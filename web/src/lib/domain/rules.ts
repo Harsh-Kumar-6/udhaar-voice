@@ -4,6 +4,7 @@ import type {
   CallStatus,
   CustomerStatus,
   Dispute,
+  Language,
   LedgerEntry,
   Note,
   Payment,
@@ -163,6 +164,17 @@ export function normalizeIndianMobile(input: string): string | null {
   const digits = input.replace(/\D/g, "");
   const local = digits.length === 12 && digits.startsWith("91") ? digits.slice(2) : digits.length === 11 && digits.startsWith("0") ? digits.slice(1) : digits;
   return /^[6-9]\d{9}$/.test(local) ? `+91${local}` : null;
+}
+
+const SCRIPTS: Record<Language, RegExp> = { bn: /[\u0980-\u09FF]/, hi: /[\u0900-\u097F]/, en: /^[\x20-\x7E]+$/ };
+
+/**
+ * The name to say on a call in `language`: the khata's native-script name when it is written in that
+ * language's script (Bengali for bn, Devanagari for hi), otherwise the Latin name. A Bengali-script name
+ * read out in a Hindi call comes out wrong.
+ */
+export function spokenName(c: { name: string; nameNative?: string }, language: Language): string {
+  return c.nameNative && language !== "en" && SCRIPTS[language].test(c.nameNative) ? c.nameNative : c.name;
 }
 
 /** Bolna's confidence labels. */

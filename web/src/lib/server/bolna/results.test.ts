@@ -22,6 +22,14 @@ describe("call status from Bolna", () => {
     expect(toCallStatus({ status: "completed", conversation_duration: 74 })).toBe("completed");
   });
 
+  it("waits for 'completed', which carries the results, after 'call-disconnected'", () => {
+    expect(toCallStatus({ status: "call-disconnected", conversation_duration: 0 })).toBe("in_progress");
+  });
+
+  it("counts a call the customer spoke on as answered even if its length isn't in yet", () => {
+    expect(toCallStatus({ status: "completed", conversation_duration: 0, transcript: "assistant: Namaste\nuser: haan" })).toBe("completed");
+  });
+
   it("counts a call nobody spoke on, or voicemail, as unanswered", () => {
     expect(toCallStatus({ status: "completed", conversation_duration: 0 })).toBe("no_answer");
     expect(toCallStatus({ status: "completed", conversation_duration: 30, answered_by_voice_mail: true })).toBe("no_answer");
@@ -80,6 +88,13 @@ describe("reading extractions", () => {
     expect(ex.dispute).toEqual({ kind: "already_paid", reason: "Says she paid ₹200 by UPI last week.", amount: undefined });
     expect(ex.notes.map((n) => n.product)).toEqual(["Maggi", "Parle-G"]);
     expect(ex.callbackAt).toBe("2026-10-29T13:00:00.000Z");
+  });
+
+  it("doesn't turn an opt-out into a dispute because the dispute type said 'other'", () => {
+    const ex = toExtraction({ extracted_data: extracted({ "Call outcome": answer("opted_out"), "Dispute type": answer("other"), "Dispute details": answer(null, "Asked not to be called.") }) }, "completed");
+    expect(ex.dispute).toBeUndefined();
+    const paid = toExtraction({ extracted_data: extracted({ "Call outcome": answer("refused"), "Dispute type": answer("already_paid") }) }, "completed");
+    expect(paid.dispute?.kind).toBe("already_paid");
   });
 
   it("treats an unanswered call as no answer whatever was extracted", () => {
