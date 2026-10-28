@@ -5,7 +5,7 @@ export const ask = {
   send: "Ask",
   voice: "Speak",
   voiceStop: "Stop and ask",
-  voiceNote: "Tap, speak, tap again. Prototype: your voice is recorded but a sample question comes back.",
+  voiceNote: "Tap, speak, tap again. Ask in Bengali, Hindi or English.",
   listening: (elapsed: string) => `Listening… ${elapsed}`,
   listeningHint: (max: number) => `Tap stop when you're done (up to ${max} seconds).`,
   transcribing: "Turning your voice into text…",

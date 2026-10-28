@@ -8,7 +8,7 @@ const latinHand = Kalam({ subsets: ["latin"], weight: ["400", "700"] });
 
 const isBengali = (s: string) => /[ঀ-৿]/.test(s);
 
-/** PROTOTYPE ONLY. A drawn khata page that stands in for a real photo. */
+/** A drawn khata page, for trying photo reading without a khata of your own. */
 export function SampleKhataPage({ className, scanning = false }: { className?: string; scanning?: boolean }) {
   return (
     <div className={cn("relative overflow-hidden rounded-lg border shadow-sm ledger-paper", className)} role="img" aria-label="Sample khata page with six handwritten credit entries">

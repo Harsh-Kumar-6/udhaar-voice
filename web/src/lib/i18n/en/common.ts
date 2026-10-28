@@ -3,9 +3,7 @@ import type { CallOutcome, CallStatus, CustomerStatus, Language, NoteKind } from
 export const common = {
   appName: "Udhaar Voice",
   prototype: {
-    banner: "Calls and your khata are real. Photo reading and voice questions are not connected yet.",
     masked: "Numbers are masked for privacy",
-    learnMore: "What's not connected?",
   },
   status: {
     due: "Due",

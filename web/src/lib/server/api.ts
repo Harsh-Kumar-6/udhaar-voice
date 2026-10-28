@@ -4,14 +4,14 @@ import { normalizeIndianMobile, toDateKey } from "@/lib/domain/rules";
 import { Shop as ShopSchema, type Call, type LedgerEntry, type Payment } from "@/lib/domain/types";
 import type { KhataImportSummary, Session, UdhaarApi } from "@/lib/api/contract";
 import { buildReminderScript } from "@/lib/demo/scripts";
-import { SAMPLE_TRANSCRIPTIONS } from "@/lib/demo/voice-sample";
-import { answerQuestion } from "./assistant";
+import { ask } from "./ask";
 import { makeCall } from "./bolna/client";
 import { agentIds, bolnaConfigured, tryCallsReal } from "./bolna/config";
 import { BOLNA_LANGUAGE, LANGUAGE_NAMES, reminderGreeting } from "./bolna/prompts";
 import { loadLines, loadShop, loadShopData, toCall, type CallRow, type ShopData } from "./data";
 import { env } from "./env";
-import { readSamplePage } from "./khata";
+import { fromReadLines, photoPath, readSamplePage, toRows } from "./khata";
+import { geminiConfigured, geminiModel, readKhataPhoto, transcribeQuestion } from "./gemini";
 import { batchSummaries, batchSummary, callDetail, callItems, candidates, customerDetail, dailyReport, dashboard, graph, summaries } from "./queries";
 import { runDispatcher } from "./dispatcher";
 import { batchCallsToCancel, callsToCancel, planBatchMove, planCallMove, planSchedule, type MovePlan } from "./scheduling";
@@ -99,7 +99,9 @@ async function dialNow() {
   }
 }
 
-let transcriptions = 0;
+/** Requests are capped at 4.5 MB on Vercel; the app shrinks photos well below this before uploading. */
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const serverApi: ServerApi = {
   getSession: ({ sb }) => currentSession(sb),
@@ -305,9 +307,29 @@ export const serverApi: ServerApi = {
     await cancelCalls(ctx.sb, db.shop.id, batchCallsToCancel(db, id));
   },
 
-  extractKhata: async (ctx, { source }) => readSamplePage(await shopData(ctx), source, ctx.now),
+  extractKhata: async (ctx, { source, photo }) => {
+    const db = await shopData(ctx);
+    if (source === "sample") return readSamplePage(db, ctx.now);
+    if (!(photo instanceof Blob) || photo.size === 0) throw new Error("Choose a photo of the khata page.");
+    if (photo.size > MAX_PHOTO_BYTES) throw new Error("That photo is too large. Try again with a smaller one.");
+    if (!geminiConfigured()) throw new Error("Reading photos isn't set up yet (GEMINI_API_KEY).");
+    const scanId = crypto.randomUUID();
+    const bytes = new Uint8Array(await photo.arrayBuffer());
+    // Kept in the shop's private folder, as evidence if an entry is disputed later.
+    const stored = await ctx.sb.storage.from("khata-photos").upload(photoPath(db.shop.id, scanId), bytes, { contentType: photo.type || "image/jpeg" });
+    if (stored.error) console.error("[khata] photo not stored:", stored.error.message);
+    let lines;
+    try {
+      lines = await readKhataPhoto(bytes, photo.type || "image/jpeg", toDateKey(ctx.now));
+    } catch (err) {
+      console.error("[khata] read failed:", err instanceof Error ? err.message : err);
+      throw new Error("Couldn't read that photo. Try again in good light, with the whole page in the frame.");
+    }
+    if (lines.length === 0) throw new Error("No entries found on that page. Try a clearer photo.");
+    return { scanId, source: "upload", rows: toRows(db, fromReadLines(lines, ctx.now)) };
+  },
 
-  saveKhata: async (ctx, { source, rows }) => {
+  saveKhata: async (ctx, { scanId, source, rows }) => {
     const db = await shopData(ctx);
     const byPhone = new Map(db.customers.filter((c) => c.phone).map((c) => [c.phone, c.id]));
     const payload = rows.map((row) => {
@@ -327,7 +349,17 @@ export const serverApi: ServerApi = {
         entry_date: row.date.value,
       };
     });
-    const result = check(await ctx.sb.rpc("save_khata_import", { p_source: source, p_rows: payload })) as {
+    const photo = source === "upload" && UUID.test(scanId) ? photoPath(db.shop.id, scanId) : null;
+    const result = check(
+      await ctx.sb.rpc("save_khata_import", {
+        p_source: source,
+        p_rows: payload,
+        p_photo_path: photo,
+        p_model: source === "upload" ? geminiModel() : null,
+        // What was saved, after the shopkeeper's corrections, with each field's confidence.
+        p_extraction: source === "upload" ? { rows } : null,
+      }),
+    ) as {
       import_id: string;
       added: number;
       updated: number;
@@ -357,11 +389,18 @@ export const serverApi: ServerApi = {
     return { removed: result.removed, restored: result.restored, customersRemoved: result.customers_removed };
   },
 
-  ask: async (ctx, question) => answerQuestion(await shopData(ctx), question, ctx.now, (input) => serverApi.scheduleReminders(ctx, input)),
+  ask: async (ctx, question) => ask(await shopData(ctx), question, ctx.now, (input) => serverApi.scheduleReminders(ctx, input)),
 
-  transcribe: async ({ sb }) => {
+  transcribe: async ({ sb }, audio) => {
     await requireSession(sb);
-    return SAMPLE_TRANSCRIPTIONS[transcriptions++ % SAMPLE_TRANSCRIPTIONS.length];
+    if (!(audio instanceof Blob) || audio.size === 0) throw new Error("Nothing was recorded. Try again.");
+    if (!geminiConfigured()) throw new Error("Voice questions aren't set up yet (GEMINI_API_KEY).");
+    try {
+      return await transcribeQuestion(new Uint8Array(await audio.arrayBuffer()), audio.type || "audio/webm");
+    } catch (err) {
+      console.error("[transcribe]", err instanceof Error ? err.message : err);
+      throw new Error("Couldn't hear that. Try again, or type your question.");
+    }
   },
 
   getDashboard: async (ctx) => dashboard(await shopData(ctx), ctx.now),

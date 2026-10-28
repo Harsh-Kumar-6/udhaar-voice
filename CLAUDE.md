@@ -10,6 +10,7 @@ Bolna Buildathon project. Read `README.md` first. The app lives in `web/` (Next.
 - **Database changes go in a new file in `web/supabase/migrations/`**, never by editing an applied one. Every shop-owned table has `shop_id` and the `own_shop` policy. Writes touching several rows go in a SQL function (security invoker).
 - **Secrets stay server-side.** The service role key is only used in `lib/server/supabase.ts` (`adminClient`) and `scripts/`; nothing under `NEXT_PUBLIC_`.
 - **Calls go through `lib/server/dispatcher.ts`** (claim, then dial; calling hours per shop) and their results through `lib/server/call-results.ts`, which reads the call back from Bolna's API. Prompts and extraction names live in `lib/server/bolna/prompts.ts`; after changing them, `npm run bolna:setup` updates the agents.
+- **Gemini lives in `lib/server/gemini.ts`**; every answer is checked against a JSON schema. Assistant tools are pure functions over `ShopData` in `lib/server/ask.ts`; add a test for each new tool.
 - **The server runs in India time** (`lib/server/timezone.ts`, imported first by the API route), because the rules read local hours and dates.
 - **All shopkeeper-facing text goes in `src/lib/i18n/en/*.ts`**, with the same keys in `src/lib/i18n/bn.ts` (Bengali) and `src/lib/i18n/hi.ts` (Hindi), and is read with `useT()`. The typechecker fails if a translation is missing. The landing page and `/try` are English-only and may inline text.
 - One modular monolith. No microservices.

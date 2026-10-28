@@ -36,20 +36,4 @@ export const settings = {
     bypass: "Allow calls outside calling hours (demo only)",
     bypassHint: "For demos in the evening. Mirrors Bolna's bypass_call_guardrails flag.",
   },
-  about: {
-    title: "What works today",
-    simulatedTitle: "Not connected yet",
-    simulated: [
-      "Reading khata photos: every photo returns the same sample result.",
-      "The voice assistant: speech returns a sample question; answers come from your data without an LLM.",
-    ],
-    realTitle: "Already real",
-    real: [
-      "Your khata: customers, dues, payments and promises, saved online and private to your account.",
-      "Signing in with your mobile number or email and a password.",
-      "Phone calls: Asha calls customers at the time you pick, and what she learns goes into the khata.",
-      "Calling rules: hours, the gap between reminders, opt-outs, wrong numbers and refusals.",
-      "WhatsApp messages with UPI payment links.",
-    ],
-  },
 };

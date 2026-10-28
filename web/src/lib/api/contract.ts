@@ -264,7 +264,8 @@ export interface UdhaarApi {
   rescheduleBatch(id: string, at: string, bypassHours: boolean): Promise<RescheduleBatchResult>;
   cancelBatch(id: string): Promise<void>;
 
-  extractKhata(input: { source: "sample" | "upload"; fileName?: string }): Promise<KhataExtraction>;
+  /** "upload" reads `photo` (a JPEG or PNG under 4 MB); "sample" reads the drawn sample page. */
+  extractKhata(input: { source: "sample" | "upload"; photo?: Blob }): Promise<KhataExtraction>;
   saveKhata(input: { scanId: string; source: KhataExtraction["source"]; rows: KhataRow[] }): Promise<KhataSaveResult>;
   /** Recent photo imports, newest first. */
   listKhataImports(): Promise<KhataImportSummary[]>;

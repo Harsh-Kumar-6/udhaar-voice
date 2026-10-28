@@ -5,8 +5,8 @@ import type { ShopData } from "./data";
 import { candidates, customerSummary, findCustomerByName, fmtDay, summaries } from "./queries";
 
 /**
- * "Ask your khata" without an LLM, until Gemini answers instead: keyword intents mapped to the
- * tools the model will call (get_summary, list_promises, ...).
+ * "Ask your khata" without an LLM: keyword intents mapped to the same tools Gemini calls
+ * (lib/server/ask.ts). Answers when Gemini isn't set up or fails.
  */
 
 const has = (q: string, words: string[]) => words.some((w) => q.includes(w));

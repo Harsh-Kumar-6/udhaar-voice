@@ -5,7 +5,6 @@ export const khata = {
     takePhoto: "Take or upload a photo",
     sample: "Use the sample page",
     tips: ["Lay the page flat in good light.", "Fit the whole page in the frame.", "One page at a time."],
-    prototypeNote: "Prototype: every photo returns the same sample result. The real app reads your handwriting with a vision model.",
   },
   reading: { title: "Reading the page…", steps: ["Finding the lines", "Reading names", "Reading amounts and dates"] },
   review: {

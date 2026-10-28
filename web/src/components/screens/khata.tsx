@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
+import { shrinkPhoto } from "@/lib/image";
 import type { KhataExtraction, KhataRow, KhataRowAction, KhataSaveResult } from "@/lib/api/contract";
 import { attempt, useApiMutation, useCustomers, useKhataImports } from "@/lib/api/hooks";
 import { formatINR, normalizeIndianMobile } from "@/lib/domain/rules";
@@ -40,8 +41,14 @@ export function KhataScreen() {
   const read = async (source: "sample" | "upload", file?: File) => {
     const url = file ? URL.createObjectURL(file) : undefined;
     setStage({ kind: "reading", source, imageUrl: url });
-    const scan = await api.extractKhata({ source, fileName: file?.name });
-    setStage({ kind: "review", source, imageUrl: url, scan });
+    try {
+      const photo = file ? await shrinkPhoto(file).catch(() => file) : undefined;
+      const scan = await api.extractKhata({ source, photo });
+      setStage({ kind: "review", source, imageUrl: url, scan });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+      setStage({ kind: "start" });
+    }
   };
 
   return (
@@ -80,7 +87,6 @@ export function KhataScreen() {
                   </li>
                 ))}
               </ul>
-              <p className="rounded-lg bg-promised-soft px-3 py-2 text-xs text-promised">{t.start.prototypeNote}</p>
             </CardContent>
           </Card>
           <RecentImports />

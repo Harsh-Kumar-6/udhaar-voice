@@ -37,7 +37,13 @@ export const httpApi: UdhaarApi = {
   listBatches: json("listBatches"),
   rescheduleBatch: json("rescheduleBatch"),
   cancelBatch: json("cancelBatch"),
-  extractKhata: json("extractKhata"),
+  extractKhata: ({ source, photo }) => {
+    if (!photo) return json("extractKhata")({ source });
+    const form = new FormData();
+    form.append("source", source);
+    form.append("photo", photo, "khata.jpg");
+    return call("extractKhata", { body: form });
+  },
   saveKhata: json("saveKhata"),
   listKhataImports: json("listKhataImports"),
   undoKhataImport: json("undoKhataImport"),

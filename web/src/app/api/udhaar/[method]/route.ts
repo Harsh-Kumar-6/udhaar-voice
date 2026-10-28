@@ -12,7 +12,7 @@ const WATCHING_CALLS = new Set<keyof UdhaarApi>(["listCalls", "getCall", "listBa
 
 /**
  * One endpoint per contract method: POST /api/udhaar/<method> with `{ args: [...] }`, or form data
- * for `transcribe`. Answers `{ data }`, or `{ error }` with a message the shopkeeper can read.
+ * for `transcribe` and photo uploads to `extractKhata`. Answers `{ data }`, or `{ error }` with a message the shopkeeper can read.
  */
 export async function POST(request: Request, ctx: RouteContext<"/api/udhaar/[method]">) {
   const { method } = await ctx.params;
@@ -21,9 +21,13 @@ export async function POST(request: Request, ctx: RouteContext<"/api/udhaar/[met
 
   let args: unknown[];
   try {
+    const multipart = (request.headers.get("content-type") ?? "").startsWith("multipart/form-data");
     if (name === "transcribe") {
       const form = await request.formData();
       args = [form.get("audio")];
+    } else if (name === "extractKhata" && multipart) {
+      const form = await request.formData();
+      args = [{ source: form.get("source"), photo: form.get("photo") }];
     } else {
       const body = (await request.json()) as { args?: unknown };
       args = Array.isArray(body.args) ? body.args : [];

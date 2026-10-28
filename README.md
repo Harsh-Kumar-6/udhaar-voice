@@ -58,14 +58,15 @@ bolna/
 | `/app/profile` | Your details, shop and UPI ID (from the avatar menu: sidebar bottom on desktop, header top-right on phones) |
 | `/app/settings` | How the app works: app language, calling rules, language for new customers, evening voice summary, demo controls |
 
-## Connected and not yet
+## What's connected
 
-| Not connected yet | Real already |
+| Part | How |
 |---|---|
-| Khata photo reading (same sample result for every photo) | Accounts (Supabase Auth: phone or email with a password), every shop's data in Postgres, private to its owner by row-level security |
-| Voice questions (speech-to-text returns a sample question; rule-based answers) | Reminder and evening summary calls through Bolna, with results written into promises, disputes, notes and opt-outs |
-| The `/try` call, unless `TRY_REAL_CALLS` is on (a Bolna trial only reaches verified numbers) | Calling hours, gap between reminders, opt-outs, wrong numbers, refusals, shared calling lines and the queue |
-| | Matching photo rows to saved entries, undoing imports, promises kept by payments; WhatsApp messages with UPI payment links |
+| Accounts and data | Supabase Auth (phone or email with a password); every shop's data in Postgres, private to its owner by row-level security |
+| Calls | Bolna reminder and evening summary agents in Bengali, Hindi and English; results written into promises, disputes, notes and opt-outs |
+| Khata photos | Gemini reads each page into rows with a confidence per field and crossed-out amounts; the photo is kept in private storage |
+| Ask your khata | Gemini answers by calling tools on the shop's data, in the language asked; voice questions are transcribed by Gemini. Without a Gemini key, keyword answers |
+| `/try` | A real Bolna call when `TRY_REAL_CALLS` is on (a Bolna trial only reaches verified numbers), otherwise a scripted conversation |
 
 ## Calls
 
@@ -77,6 +78,8 @@ bolna/
 
 `web/supabase/migrations/` holds the schema. Every row a shop owns carries `shop_id`, and one access rule limits signed-in users to their own shop. Totals (balances, collections, call stats) are computed from rows, not stored. Undoing a khata import voids its entries instead of deleting them. Server work that no single shop owns (sign-up, the shared call lines, the `/try` limits) uses the service role key on the server only.
 
-## Next steps
+## Reading and understanding
 
-1. Gemini for khata photos (returning the `KhataExtraction` shape), the assistant's answers and voice questions; then remove the sample khata page and the scripted `/try` call.
+- **Khata photos** (`lib/server/gemini.ts`, `khata.ts`): the photo is shrunk in the browser, stored in `khata-photos/{shop}/{scan}.jpg`, and read by Gemini against a JSON schema. Rows are then matched to customers and saved entries exactly like the sample page.
+- **Ask** (`lib/server/ask.ts`): Gemini gets tools over the shop's data (summary, a customer, promises by range, top dues, disputes, missed promises, collections, product requests, scheduling a call) and answers in the question's language. The keyword assistant answers when Gemini isn't set up or fails.
+- **Voice questions:** Gemini transcribes the recording in its own script before it is asked.

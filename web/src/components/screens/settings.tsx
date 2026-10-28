@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, FlaskConical } from "lucide-react";
+import { FlaskConical } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorBlock, LoadingBlock, PageHeader } from "@/components/app/bits";
@@ -33,7 +33,6 @@ export function SettingsScreen() {
       <AppLanguage />
       <WorkflowForm key={JSON.stringify(q.data)} shop={q.data} />
       <PrototypeControls shop={q.data} />
-      <About />
     </div>
   );
 }
@@ -208,39 +207,6 @@ function PrototypeControls({ shop }: { shop: Shop }) {
             <span className="block text-xs text-muted-foreground">{t.bypassHint}</span>
           </span>
         </label>
-      </CardContent>
-    </Card>
-  );
-}
-
-function About() {
-  const t = useT().settings.about;
-  return (
-    <Card id="about" className="scroll-mt-24">
-      <CardHeader>
-        <CardTitle>{t.title}</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-6 md:grid-cols-2">
-        <div className="space-y-2">
-          <h3 className="flex items-center gap-2 text-sm font-semibold">
-            <FlaskConical className="size-4 text-promised" /> {t.simulatedTitle}
-          </h3>
-          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
-            {t.simulated.map((x) => (
-              <li key={x}>{x}</li>
-            ))}
-          </ul>
-        </div>
-        <div className="space-y-2">
-          <h3 className="flex items-center gap-2 text-sm font-semibold">
-            <CheckCircle2 className="size-4 text-paid" /> {t.realTitle}
-          </h3>
-          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
-            {t.real.map((x) => (
-              <li key={x}>{x}</li>
-            ))}
-          </ul>
-        </div>
       </CardContent>
     </Card>
   );

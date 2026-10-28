@@ -184,8 +184,8 @@ export default function LandingPage() {
 
       <footer className="border-t">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-sm text-muted-foreground sm:px-6">
-          <span>Udhaar Voice · prototype with sample data</span>
-          <span>Voice agents by Bolna · Bengali and Hindi speech by Sarvam</span>
+          <span>Udhaar Voice · Bolna Buildathon 2026</span>
+          <span>Voice agents by Bolna · Speech by Sarvam and ElevenLabs · Khata reading by Gemini</span>
         </div>
       </footer>
     </div>
