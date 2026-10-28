@@ -17,11 +17,14 @@ import { maskPhone, normalizeIndianMobile } from "@/lib/domain/rules";
 import type { Language } from "@/lib/domain/types";
 import { format, parseISO } from "date-fns";
 
+type Scripted = Extract<DemoCallResult, { real: false }>;
 type Phase =
   | { kind: "form" }
-  | { kind: "ringing"; phone: string; result: Extract<DemoCallResult, { allowed: true }> }
-  | { kind: "talking"; phone: string; result: Extract<DemoCallResult, { allowed: true }> }
-  | { kind: "done"; phone: string; result: Extract<DemoCallResult, { allowed: true }> };
+  /** A real call is on its way. */
+  | { kind: "placed"; phone: string }
+  | { kind: "ringing"; phone: string; result: Scripted }
+  | { kind: "talking"; phone: string; result: Scripted }
+  | { kind: "done"; phone: string; result: Scripted };
 
 const LANGS: { value: Language; label: string; sample: string }[] = [
   { value: "bn", label: "Bengali", sample: "নমস্কার" },
@@ -59,11 +62,18 @@ export function TryCallScreen() {
     if (!e164) return setError("Enter a 10-digit Indian mobile number.");
     if (!consent) return setError("Tick the box to agree to the demo call.");
     setSubmitting(true);
-    const result = await api.startDemoCall({ phone: e164, language, name });
-    setSubmitting(false);
+    let result: DemoCallResult;
+    try {
+      result = await api.startDemoCall({ phone: e164, language, name });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't start the demo call. Try again.");
+      return;
+    } finally {
+      setSubmitting(false);
+    }
     if (!result.allowed) return setError(result.reason);
     setError(null);
-    setPhase({ kind: "ringing", phone: e164, result });
+    setPhase(result.real ? { kind: "placed", phone: e164 } : { kind: "ringing", phone: e164, result });
   };
 
   return (
@@ -74,11 +84,6 @@ export function TryCallScreen() {
           You play a customer of Maa Tara Variety Stores who owes ₹350. Pick a language and hear how Asha, the shop&apos;s AI assistant, handles it.
         </p>
       </div>
-
-      <p className="flex items-start gap-2 rounded-lg bg-promised-soft px-4 py-3 text-sm text-promised">
-        <FlaskConical className="mt-0.5 size-4 shrink-0" />
-        Prototype: no real call is placed yet. You&apos;ll see the conversation the call would have, line by line.
-      </p>
 
       {phase.kind === "form" ? (
         <Card>
@@ -118,6 +123,31 @@ export function TryCallScreen() {
             </form>
           </CardContent>
         </Card>
+      ) : null}
+
+      {phase.kind === "placed" ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
+            <span className="relative grid size-20 place-items-center rounded-full bg-primary text-primary-foreground">
+              <span className="absolute inset-0 animate-ping rounded-full bg-primary/40" />
+              <PhoneCall className="relative size-8" />
+            </span>
+            <p className="font-heading text-xl font-bold">Calling {maskPhone(phase.phone)} now</p>
+            <p className="max-w-md text-sm text-muted-foreground">
+              Pick up the call from Bolna&apos;s shared +91 number. Asha will ask about the ₹350 you owe Maa Tara Variety Stores: promise a day, say you already paid, or ask her to call back later.
+            </p>
+            <Button size="lg" variant="outline" onClick={() => setPhase({ kind: "form" })}>
+              <RotateCcw /> Start again
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {phase.kind === "ringing" || phase.kind === "talking" ? (
+        <p className="flex items-start gap-2 rounded-lg bg-promised-soft px-4 py-3 text-sm text-promised">
+          <FlaskConical className="mt-0.5 size-4 shrink-0" />
+          Real demo calls are off right now, so here is the conversation the call would have, line by line.
+        </p>
       ) : null}
 
       {phase.kind === "ringing" ? (

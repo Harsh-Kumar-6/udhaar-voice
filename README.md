@@ -20,6 +20,7 @@ npm run dev          # http://localhost:3000
 | `npm run lint` | ESLint |
 | `npm run build` | Production build (also checks Cache Components rules) |
 | `npm run db:seed` | Loads the demo shop (Maa Tara Variety Stores) and its login into Supabase, replacing any earlier copy |
+| `npm run bolna:setup` | Writes the prompts, greeting, webhook and extractions onto the two Bolna agents |
 
 ## What's where
 
@@ -28,7 +29,7 @@ bolna/
 ├─ credits-ledger.md          Bolna credit spend, updated after every test
 ├─ web/                       Next.js 16 app
 │  ├─ supabase/migrations/    Tables, access rules and multi-row functions, in order
-│  ├─ scripts/seed-demo.ts    The demo shop loader behind `npm run db:seed`
+│  ├─ scripts/                The demo shop loader (`db:seed`) and the Bolna agent setup (`bolna:setup`)
 │  └─ src/
 │     ├─ app/                 Routes: / (landing), /try (judges' demo), /app/* (shopkeeper app), /api/udhaar/* (the API)
 │     ├─ components/screens/  One file per screen
@@ -61,10 +62,16 @@ bolna/
 
 | Not connected yet | Real already |
 |---|---|
-| Phone calls: scheduled calls are saved, but nothing dials them | Accounts (Supabase Auth: phone or email with a password), every shop's data in Postgres, private to its owner by row-level security |
-| Khata photo reading (same sample result for every photo) | Calling hours, gap between reminders, opt-outs, wrong numbers, refusals, shared calling lines and the queue |
-| Voice questions (speech-to-text returns a sample question; rule-based answers) | Matching photo rows to saved entries, undoing imports, promises kept by payments |
-| The `/try` call (scripted conversation) | WhatsApp messages with UPI payment links |
+| Khata photo reading (same sample result for every photo) | Accounts (Supabase Auth: phone or email with a password), every shop's data in Postgres, private to its owner by row-level security |
+| Voice questions (speech-to-text returns a sample question; rule-based answers) | Reminder and evening summary calls through Bolna, with results written into promises, disputes, notes and opt-outs |
+| The `/try` call, unless `TRY_REAL_CALLS` is on (a Bolna trial only reaches verified numbers) | Calling hours, gap between reminders, opt-outs, wrong numbers, refusals, shared calling lines and the queue |
+| | Matching photo rows to saved entries, undoing imports, promises kept by payments; WhatsApp messages with UPI payment links |
+
+## Calls
+
+- **Agents:** two Bolna agents, Reminder and Evening summary. Their voices and languages are set on Bolna; `npm run bolna:setup` writes the prompts (`lib/server/bolna/prompts.ts`), greeting, webhook and extractions onto them. Each call fills the prompt from `user_data`: the customer's name, amount due, what they bought, memory from earlier calls and any open dispute.
+- **Dispatcher** (`lib/server/dispatcher.ts`): every minute (Supabase cron, `0005_scheduler.sql`) and right after a call is scheduled for now. It creates evening summary calls at each shop's time, queues due calls, and dials them while lines are free, taking turns between shops and only inside calling hours. A call is claimed before it's dialled, so it's never dialled twice.
+- **Results:** Bolna's webhook (`/api/bolna/webhook`) and the dispatcher's check of calls on a line both read the call back from Bolna's API, then write the status, transcript, cost and the extracted outcome, promise, dispute, notes and opt-out (`lib/server/call-results.ts`). A finished call's result is written once.
 
 ## The database
 
@@ -72,5 +79,4 @@ bolna/
 
 ## Next steps
 
-1. Bolna: reminder and evening summary agents, the call dispatcher (shared lines, calling hours), webhook → call results into promises, disputes and notes.
-2. Gemini for khata photos (returning the `KhataExtraction` shape), the assistant's answers and voice questions; then remove the sample khata page and the scripted `/try` call.
+1. Gemini for khata photos (returning the `KhataExtraction` shape), the assistant's answers and voice questions; then remove the sample khata page and the scripted `/try` call.

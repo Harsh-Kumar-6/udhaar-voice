@@ -53,7 +53,7 @@ export function customerSummary(db: ShopData, c: Customer, now: Date): CustomerS
   const balance = balanceOf(entries, payments);
   const calls = customerCalls(db, c.id);
   const latest = calls[0];
-  // Only an answered call counts as a reminder; Bolna's auto-retry covers unanswered ones.
+  // Only an answered call counts as a reminder, so an unanswered one can be tried again any time.
   const lastAnswered = calls.find((k) => k.status === "completed");
   return {
     customer: c,

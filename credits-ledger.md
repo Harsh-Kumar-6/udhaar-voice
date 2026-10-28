@@ -10,6 +10,14 @@ Rate observed: $0.06/min (bundled models, Bolna shared number). Own provider key
 | 2026-10-19/21 | Sign-up credit (Roshan's account) | | +$5.00 | $5.00 |
 | 2026-10-21 | Template agent test call ("(v2) Onboarding - En + Hi"), ended by asking it to hang up | ~8 | -$0.51 | **$4.49** (~75 min) |
 
+## Planned: first real calls (call pipeline, 28 Oct)
+
+| Test | Calls × length | Estimated cost |
+|---|---|---|
+| Reminder calls: promise, dispute, call back, wrong number, opt out | 5 × ~2 min | ~$0.60 |
+| Evening summary call | 1 × ~1.5 min | ~$0.10 |
+| **Balance after** | | **~$3.80** |
+
 ## Credit that may arrive (not counted until it shows in the dashboard)
 
 - $10 "Buildathon credit": mentioned only in the credits form; not received yet.

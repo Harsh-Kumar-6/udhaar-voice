@@ -40,7 +40,6 @@ export const settings = {
     title: "What works today",
     simulatedTitle: "Not connected yet",
     simulated: [
-      "Phone calls: scheduled calls are saved with their time, but nobody is dialled yet.",
       "Reading khata photos: every photo returns the same sample result.",
       "The voice assistant: speech returns a sample question; answers come from your data without an LLM.",
     ],
@@ -48,6 +47,7 @@ export const settings = {
     real: [
       "Your khata: customers, dues, payments and promises, saved online and private to your account.",
       "Signing in with your mobile number or email and a password.",
+      "Phone calls: Asha calls customers at the time you pick, and what she learns goes into the khata.",
       "Calling rules: hours, the gap between reminders, opt-outs, wrong numbers and refusals.",
       "WhatsApp messages with UPI payment links.",
     ],

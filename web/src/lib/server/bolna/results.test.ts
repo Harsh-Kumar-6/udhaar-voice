@@ -1,0 +1,130 @@
+import { describe, expect, it } from "vitest";
+import { findAnswer, parseTranscript, planCallResult, toCallStatus, toExtraction } from "./results";
+
+const answer = (objective: string | null, subjective = "", confidence = 0.9) => ({
+  subjective,
+  objective,
+  confidence,
+  confidence_label: "High",
+  reasoning_subjective: null,
+  reasoning_objective: null,
+  validation: null,
+});
+
+const extracted = (fields: Record<string, ReturnType<typeof answer>>) => ({ "Udhaar Voice": fields });
+
+describe("call status from Bolna", () => {
+  it("maps Bolna's statuses to ours", () => {
+    expect(toCallStatus({ status: "in-progress" })).toBe("in_progress");
+    expect(toCallStatus({ status: "initiated" })).toBe("ringing");
+    expect(toCallStatus({ status: "no-answer" })).toBe("no_answer");
+    expect(toCallStatus({ status: "balance-low" })).toBe("failed");
+    expect(toCallStatus({ status: "completed", conversation_duration: 74 })).toBe("completed");
+  });
+
+  it("counts a call nobody spoke on, or voicemail, as unanswered", () => {
+    expect(toCallStatus({ status: "completed", conversation_duration: 0 })).toBe("no_answer");
+    expect(toCallStatus({ status: "completed", conversation_duration: 30, answered_by_voice_mail: true })).toBe("no_answer");
+  });
+});
+
+describe("transcript", () => {
+  it("splits Bolna's lines into turns, joining wrapped lines", () => {
+    const turns = parseTranscript("assistant: Namaskar\nuser: haan bolo\nthis continues\nassistant: Dhonnobad", "reminder", 30);
+    expect(turns.map((t) => [t.speaker, t.text])).toEqual([
+      ["agent", "Namaskar"],
+      ["customer", "haan bolo this continues"],
+      ["agent", "Dhonnobad"],
+    ]);
+    expect(turns[2].at).toBe(20);
+  });
+
+  it("labels the other side the shopkeeper on summary calls", () => {
+    expect(parseTranscript("user: thik ache", "report")[0].speaker).toBe("shopkeeper");
+  });
+});
+
+describe("reading extractions", () => {
+  it("finds an answer by name in any category, or flat", () => {
+    expect(findAnswer(extracted({ "Call outcome": answer("promised") }), "call outcome")?.value).toBe("promised");
+    expect(findAnswer({ "Promised amount": "500" }, "Promised amount")?.value).toBe("500");
+    expect(findAnswer(null, "x")).toBeUndefined();
+  });
+
+  it("builds a promise from the amount and the exact date", () => {
+    const ex = toExtraction(
+      { extracted_data: extracted({ "Call outcome": answer("promised"), "Promised amount": answer(null, "₹500"), "Promised date": answer(null, "2026-10-30") }), summary: "Will pay Friday." },
+      "completed",
+    );
+    expect(ex).toMatchObject({ outcome: "promised", promises: [{ amount: 500, dueDate: "2026-10-30" }], summary: "Will pay Friday.", confidence: 0.9 });
+  });
+
+  it("skips a promise without a usable date rather than guessing one", () => {
+    const ex = toExtraction({ extracted_data: extracted({ "Call outcome": answer("promised"), "Promised amount": answer(null, "500"), "Promised date": answer(null, "Friday") }) }, "completed");
+    expect(ex.promises).toEqual([]);
+  });
+
+  it("records a dispute, products and a callback time in Indian time", () => {
+    const ex = toExtraction(
+      {
+        extracted_data: extracted({
+          "Call outcome": answer("disputed"),
+          "Dispute type": answer("already_paid"),
+          "Dispute details": answer(null, "Says she paid ₹200 by UPI last week."),
+          "Products asked for": answer(null, "Maggi, Parle-G"),
+          "Call back time": answer(null, "2026-10-29 18:30"),
+        }),
+      },
+      "completed",
+    );
+    expect(ex.dispute).toEqual({ kind: "already_paid", reason: "Says she paid ₹200 by UPI last week.", amount: undefined });
+    expect(ex.notes.map((n) => n.product)).toEqual(["Maggi", "Parle-G"]);
+    expect(ex.callbackAt).toBe("2026-10-29T13:00:00.000Z");
+  });
+
+  it("treats an unanswered call as no answer whatever was extracted", () => {
+    expect(toExtraction({ extracted_data: extracted({ "Call outcome": answer("promised") }) }, "no_answer").outcome).toBe("no_answer");
+  });
+
+  it("ignores empty answers like 'none'", () => {
+    const ex = toExtraction({ extracted_data: extracted({ "Call outcome": answer("refused"), "Products asked for": answer(null, "none"), "Other things to remember": answer(null, "N/A") }) }, "completed");
+    expect(ex.notes).toEqual([]);
+    expect(ex.dispute).toBeUndefined();
+  });
+});
+
+describe("what a call adds to the khata", () => {
+  const ex = toExtraction(
+    {
+      extracted_data: extracted({
+        "Call outcome": answer("promised"),
+        "Promised amount": answer(null, "500"),
+        "Promised date": answer(null, "2026-10-30"),
+        "Products asked for": answer(null, "Maggi"),
+      }),
+    },
+    "completed",
+  );
+
+  it("adds new promises and notes", () => {
+    const plan = planCallResult({ id: "k1", customerId: "c1" }, ex, { promises: [], disputes: [], notes: [] });
+    expect(plan.promises).toEqual([{ amount: 500, dueDate: "2026-10-30" }]);
+    expect(plan.notes).toHaveLength(1);
+    expect(plan.optOut).toBe(false);
+  });
+
+  it("doesn't repeat a promise or note already recorded for the customer", () => {
+    const plan = planCallResult({ id: "k1", customerId: "c1" }, ex, {
+      promises: [{ id: "p", customerId: "c1", amount: 500, dueDate: "2026-10-30", status: "open", createdAt: "" }],
+      disputes: [],
+      notes: [{ id: "n", customerId: "c1", kind: "product_demand", text: "Asked the shop to keep Maggi.", product: "Maggi", createdAt: "" }],
+    });
+    expect(plan.promises).toEqual([]);
+    expect(plan.notes).toEqual([]);
+  });
+
+  it("opts the customer out when they ask", () => {
+    const out = toExtraction({ extracted_data: extracted({ "Call outcome": answer("opted_out") }) }, "completed");
+    expect(planCallResult({ id: "k1", customerId: "c1" }, out, { promises: [], disputes: [], notes: [] }).optOut).toBe(true);
+  });
+});

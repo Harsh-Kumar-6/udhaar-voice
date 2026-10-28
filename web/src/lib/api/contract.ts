@@ -198,7 +198,10 @@ export type EligibleCustomer = CustomerSummary & {
 };
 
 export type DemoCallResult =
-  | { allowed: true; language: Language; turns: Call["transcript"]; extraction: NonNullable<Call["extraction"]> }
+  /** A real call is on its way to the visitor's phone. */
+  | { allowed: true; real: true; language: Language }
+  /** Real demo calls are off: the conversation the call would have, to play on screen. */
+  | { allowed: true; real: false; language: Language; turns: Call["transcript"]; extraction: NonNullable<Call["extraction"]> }
   | { allowed: false; reason: string };
 
 export type Session = { user: User; shop: Shop };

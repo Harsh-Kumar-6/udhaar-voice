@@ -1,14 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { format } from "date-fns";
 import { normalizeIndianMobile, toDateKey } from "@/lib/domain/rules";
 import { Shop as ShopSchema, type Call, type LedgerEntry, type Payment } from "@/lib/domain/types";
 import type { KhataImportSummary, Session, UdhaarApi } from "@/lib/api/contract";
 import { buildReminderScript } from "@/lib/demo/scripts";
 import { SAMPLE_TRANSCRIPTIONS } from "@/lib/demo/voice-sample";
 import { answerQuestion } from "./assistant";
+import { makeCall } from "./bolna/client";
+import { agentIds, bolnaConfigured, tryCallsReal } from "./bolna/config";
+import { BOLNA_LANGUAGE, LANGUAGE_NAMES, reminderGreeting } from "./bolna/prompts";
 import { loadLines, loadShop, loadShopData, toCall, type CallRow, type ShopData } from "./data";
 import { env } from "./env";
 import { readSamplePage } from "./khata";
 import { batchSummaries, batchSummary, callDetail, callItems, candidates, customerDetail, dailyReport, dashboard, graph, summaries } from "./queries";
+import { runDispatcher } from "./dispatcher";
 import { batchCallsToCancel, callsToCancel, planBatchMove, planCallMove, planSchedule, type MovePlan } from "./scheduling";
 import { adminClient, check, maybe } from "./supabase";
 import { parseIdentifier, parseProfile, parseSignUp, WRONG_DETAILS } from "./validation";
@@ -82,6 +87,16 @@ async function emailInUse(email: string, except?: string): Promise<boolean> {
   // Before that migration runs, fall back to Supabase Auth's own duplicate check.
   if (result.error?.code === "PGRST202") return false;
   return check(result) as boolean;
+}
+
+/** Dials calls that are due now straight away, instead of at the next minute's run. Never throws. */
+async function dialNow() {
+  if (!bolnaConfigured()) return;
+  try {
+    await runDispatcher();
+  } catch (err) {
+    console.error("[dispatcher]", err instanceof Error ? err.message : err);
+  }
 }
 
 let transcriptions = 0;
@@ -253,6 +268,7 @@ export const serverApi: ServerApi = {
         p_detail: plan.detail ?? null,
       }),
     ) as string;
+    if (plan.at.getTime() <= ctx.now.getTime() + 60_000) await dialNow();
     const batch = (await shopData(ctx)).batches.find((b) => b.id === batchId);
     return { batch, skipped: plan.skipped };
   },
@@ -361,6 +377,7 @@ export const serverApi: ServerApi = {
         .single<CallRow>(),
     );
     await addEvents(sb, shop.id, [row.id], "scheduled", "Evening report to the shopkeeper");
+    await dialNow();
     return toCall(row, [{ at: iso(now), status: "scheduled", detail: "Evening report to the shopkeeper" }]);
   },
 
@@ -377,11 +394,36 @@ export const serverApi: ServerApi = {
     if (error?.code === "23505") return { allowed: false, reason: "This number already had a demo call today. Try again tomorrow." };
     if (error) throw new Error(error.message);
     const visitor = name?.trim() || "friend";
+    if (tryCallsReal() && bolnaConfigured()) {
+      const shopName = "Maa Tara Variety Stores";
+      const userData = {
+        customer_name: visitor,
+        shop_name: shopName,
+        language_name: LANGUAGE_NAMES[language],
+        amount_due: "₹350",
+        items: "groceries",
+        memory: "No previous calls.",
+        dispute_note: "There are no open disputes.",
+        today: format(now, "EEEE, d MMMM yyyy"),
+        upi_id: "maatara.demo@upi",
+        max_minutes: 3,
+        greeting: reminderGreeting(language, visitor, shopName),
+      };
+      try {
+        const base = { agent_id: agentIds().reminder, recipient_phone_number: number, user_data: userData, bypass_call_guardrails: true };
+        await makeCall({ ...base, agent_data: { language: BOLNA_LANGUAGE[language] } }).catch(() => makeCall(base));
+      } catch (err) {
+        // Free the number's daily slot: no call was placed.
+        await admin.from("try_calls").delete().eq("phone", number).eq("called_on", today);
+        throw new Error(`The call couldn't be placed. ${err instanceof Error ? err.message : ""}`.trim());
+      }
+      return { allowed: true, real: true, language };
+    }
     const script = buildReminderScript(language === "bn" ? "promise_product" : "promise", {
       now,
       customer: { name: visitor, nameNative: visitor, language },
       amount: 350,
     });
-    return { allowed: true, language, turns: script.turns, extraction: script.extraction };
+    return { allowed: true, real: false, language, turns: script.turns, extraction: script.extraction };
   },
 };

@@ -9,6 +9,7 @@ Bolna Buildathon project. Read `README.md` first. The app lives in `web/` (Next.
 - **Server queries are pure functions over `ShopData`** (`lib/server/queries.ts`, `scheduling.ts`); `lib/server/data.ts` loads a shop's rows and `api.ts` does the writes. Test the pure parts with `createSeed()`.
 - **Database changes go in a new file in `web/supabase/migrations/`**, never by editing an applied one. Every shop-owned table has `shop_id` and the `own_shop` policy. Writes touching several rows go in a SQL function (security invoker).
 - **Secrets stay server-side.** The service role key is only used in `lib/server/supabase.ts` (`adminClient`) and `scripts/`; nothing under `NEXT_PUBLIC_`.
+- **Calls go through `lib/server/dispatcher.ts`** (claim, then dial; calling hours per shop) and their results through `lib/server/call-results.ts`, which reads the call back from Bolna's API. Prompts and extraction names live in `lib/server/bolna/prompts.ts`; after changing them, `npm run bolna:setup` updates the agents.
 - **The server runs in India time** (`lib/server/timezone.ts`, imported first by the API route), because the rules read local hours and dates.
 - **All shopkeeper-facing text goes in `src/lib/i18n/en/*.ts`**, with the same keys in `src/lib/i18n/bn.ts` (Bengali) and `src/lib/i18n/hi.ts` (Hindi), and is read with `useT()`. The typechecker fails if a translation is missing. The landing page and `/try` are English-only and may inline text.
 - One modular monolith. No microservices.

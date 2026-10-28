@@ -1,7 +1,14 @@
 import "@/lib/server/timezone";
+import { after } from "next/server";
 import type { UdhaarApi } from "@/lib/api/contract";
 import { NotSignedIn, serverApi } from "@/lib/server/api";
+import { nudgeDispatcher } from "@/lib/server/dispatcher";
 import { userClient } from "@/lib/server/supabase";
+
+export const maxDuration = 60;
+
+/** Screens that watch calls also keep the dispatcher moving between its once-a-minute runs. */
+const WATCHING_CALLS = new Set<keyof UdhaarApi>(["listCalls", "getCall", "listBatches", "getDashboard"]);
 
 /**
  * One endpoint per contract method: POST /api/udhaar/<method> with `{ args: [...] }`, or form data
@@ -26,10 +33,11 @@ export async function POST(request: Request, ctx: RouteContext<"/api/udhaar/[met
   }
 
   try {
-    // Methods outside PUBLIC_METHODS check the session themselves and throw NotSignedIn.
+    // Methods that need a signed-in shopkeeper check the session themselves and throw NotSignedIn.
     const sb = await userClient();
     const handler = serverApi[name] as (c: { sb: typeof sb; now: Date }, ...a: unknown[]) => Promise<unknown>;
     const data = await handler({ sb, now: new Date() }, ...args);
+    if (WATCHING_CALLS.has(name)) after(nudgeDispatcher);
     return Response.json({ data: data ?? null });
   } catch (err) {
     if (err instanceof NotSignedIn) return Response.json({ error: err.message }, { status: 401 });

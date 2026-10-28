@@ -1,0 +1,158 @@
+import type { CallOutcome, Dispute, Language } from "@/lib/domain/types";
+
+type DisputeKind = Dispute["kind"];
+
+/**
+ * What the Bolna agents say and what Bolna extracts after each call. `npm run bolna:setup` writes
+ * these onto the agents; `{name}` placeholders are filled per call from `user_data`.
+ */
+
+export const LANGUAGE_NAMES: Record<Language, string> = { bn: "Bengali", hi: "Hindi", en: "English" };
+
+/** Bolna's language keys for a multilingual agent. */
+export const BOLNA_LANGUAGE: Record<Language, string> = { bn: "bn", hi: "hi", en: "en" };
+
+export const REMINDER_WELCOME = "{greeting}";
+
+export const REMINDER_PROMPT = `You are Asha, a polite voice assistant calling on behalf of {shop_name}, a neighbourhood shop in India. You are an AI, and you say so.
+
+Speak only {language_name}, in short, warm, everyday sentences, the way people at a local shop talk. If the customer clearly prefers another of Bengali, Hindi or English, switch to it.
+
+What you know:
+- Customer: {customer_name}
+- Pending at the shop: {amount_due} ({items})
+- From earlier calls: {memory}
+- {dispute_note}
+- Today is {today}.
+- The shop's UPI ID, if they want to pay by UPI: {upi_id}
+
+How the call goes:
+1. Your greeting already asked whether this is {customer_name}. If it is someone else, or they don't know {customer_name}, say sorry for the trouble and end the call. Never mention the shop's dues, any amount or why you called to anyone but {customer_name}.
+2. Say you are an AI assistant calling from {shop_name}, and gently remind them that {amount_due} is pending.
+3. Ask when they can pay. Get one amount and one day. If they pay part now and the rest later, take the next amount and its day.
+4. Before moving on, repeat the promise with the exact date, for example "So ₹500 on Friday, 30 October". Work the date out from today's date.
+5. If they say they already paid, or the amount is wrong, do not argue. Say the shopkeeper will check, and note what they said.
+6. If they are busy, ask when to call back, and repeat that day and time with the exact date.
+7. If they ask not to be called again, agree politely and end the call.
+8. If they mention something they want the shop to keep, remember it.
+9. Thank them and end the call.
+
+Rules you never break:
+- Never threaten, shame, pressure or mention legal action, the police or telling others.
+- Never tell anyone else what this customer owes.
+- Never invent amounts, dates or offers. Use only what is above.
+- Keep the call under {max_minutes} minutes.`;
+
+export const REPORT_WELCOME = "{greeting}";
+
+export const REPORT_PROMPT = `You are Asha, the AI voice assistant of Udhaar Voice. You are calling {owner_name}, the owner of {shop_name}, with today's summary of their credit book (khata).
+
+Speak only {language_name}, in short, clear sentences. Amounts are in rupees.
+
+Today's summary:
+{summary}
+
+How the call goes:
+1. Read the summary in your own words, a few sentences at a time. Keep every name and amount exactly as given.
+2. Ask if they have a question about it. Answer only from the summary; if it isn't there, say they can see it in the app.
+3. Say goodbye. Keep the call under 3 minutes.`;
+
+/** What the greeting says, in each language. The agent waits for the answer before going on. */
+export function reminderGreeting(language: Language, customerName: string, shopName: string): string {
+  if (language === "bn") return `নমস্কার, আমি কি ${customerName}-এর সঙ্গে কথা বলছি? আমি ${shopName} থেকে ফোন করছি।`;
+  if (language === "hi") return `नमस्ते, क्या मेरी बात ${customerName} जी से हो रही है? मैं ${shopName} की ओर से फ़ोन कर रही हूँ।`;
+  return `Hello, am I speaking with ${customerName}? I'm calling from ${shopName}.`;
+}
+
+export function reportGreeting(language: Language, ownerName: string): string {
+  if (language === "bn") return `নমস্কার ${ownerName}, আমি আশা। আজকের হিসেব শোনাচ্ছি।`;
+  if (language === "hi") return `नमस्ते ${ownerName} जी, मैं आशा हूँ। आज का हिसाब सुनाती हूँ।`;
+  return `Hello ${ownerName}, this is Asha with today's summary.`;
+}
+
+/* ---------------------------------------------------------------- extractions */
+
+/** Bolna groups extractions in categories; results arrive under extracted_data[category][name]. */
+export const EXTRACTION_CATEGORY = "Udhaar Voice";
+
+export const EXTRACTIONS = {
+  outcome: "Call outcome",
+  promiseAmount: "Promised amount",
+  promiseDate: "Promised date",
+  disputeKind: "Dispute type",
+  disputeReason: "Dispute details",
+  disputeAmount: "Amount the customer says is right",
+  callbackAt: "Call back time",
+  products: "Products asked for",
+  note: "Other things to remember",
+  sentiment: "Customer mood",
+} as const;
+
+/** Customer-call outcomes the extraction picks from. `report_delivered` is set by us on report calls. */
+const OUTCOMES: { value: Exclude<CallOutcome, "report_delivered">; condition: string }[] = [
+  { value: "promised", condition: "The customer agreed to pay an amount on a day." },
+  { value: "disputed", condition: "The customer said they already paid, or that the amount is wrong." },
+  { value: "callback", condition: "The customer was busy and asked to be called at another time." },
+  { value: "refused", condition: "The customer would not commit, or said they will settle in person at the shop." },
+  { value: "wrong_number", condition: "The person who answered is not the customer, or doesn't know them." },
+  { value: "opted_out", condition: "The customer asked not to be called again." },
+  { value: "no_answer", condition: "Nobody spoke, it was voicemail, or the call dropped before the customer said anything useful." },
+];
+
+const DISPUTE_KINDS: { value: DisputeKind; condition: string }[] = [
+  { value: "already_paid", condition: "The customer says they have already paid." },
+  { value: "wrong_amount", condition: "The customer says the amount is wrong." },
+  { value: "other", condition: "Any other disagreement about the dues." },
+];
+
+/** Bolna disposition bodies, as `POST /dispositions/` takes them. */
+export function extractionDefinitions(agentId: string) {
+  const base = { category: EXTRACTION_CATEGORY, agent_ids: [agentId] };
+  const text = (name: string, question: string) => ({ ...base, name, question, is_subjective: true, is_objective: false, subjective_type: "text" });
+  return [
+    {
+      ...base,
+      name: EXTRACTIONS.outcome,
+      question: "What was the outcome of this payment reminder call?",
+      is_subjective: false,
+      is_objective: true,
+      objective_options: OUTCOMES,
+    },
+    { ...base, name: EXTRACTIONS.promiseAmount, question: "If the customer promised to pay, how many rupees did they promise next? Digits only, or empty.", is_subjective: true, is_objective: false, subjective_type: "numeric" },
+    {
+      ...base,
+      name: EXTRACTIONS.promiseDate,
+      question: "If the customer promised to pay, on which date? The agent repeats it with the exact date. Answer as YYYY-MM-DD, or empty.",
+      is_subjective: true,
+      is_objective: false,
+      subjective_type: "regex",
+      subjective_type_config: { pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    },
+    { ...base, name: EXTRACTIONS.disputeKind, question: "If the customer disagreed about the dues, what kind of disagreement was it?", is_subjective: false, is_objective: true, objective_options: [...DISPUTE_KINDS, { value: "none", condition: "There was no disagreement." }] },
+    text(EXTRACTIONS.disputeReason, "If the customer disagreed about the dues, what exactly did they say, in one English sentence? Empty otherwise."),
+    { ...base, name: EXTRACTIONS.disputeAmount, question: "If the customer said a different amount is right, how many rupees? Digits only, or empty.", is_subjective: true, is_objective: false, subjective_type: "numeric" },
+    {
+      ...base,
+      name: EXTRACTIONS.callbackAt,
+      question: "If the customer asked to be called back, when? The agent repeats the exact date and time. Answer as YYYY-MM-DD HH:MM in 24-hour Indian time, or empty.",
+      is_subjective: true,
+      is_objective: false,
+      subjective_type: "regex",
+      subjective_type_config: { pattern: "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}$" },
+    },
+    text(EXTRACTIONS.products, "Which products did the customer ask the shop to keep or bring? Short English names separated by commas, or empty."),
+    text(EXTRACTIONS.note, "Anything else the shopkeeper should remember about this customer from the call (a family event, a complaint, who pays for whom), in one short English sentence. Empty if nothing."),
+    {
+      ...base,
+      name: EXTRACTIONS.sentiment,
+      question: "How did the customer feel during the call?",
+      is_subjective: false,
+      is_objective: true,
+      objective_options: [
+        { value: "positive", condition: "Friendly or cooperative." },
+        { value: "neutral", condition: "Neither friendly nor upset." },
+        { value: "negative", condition: "Annoyed, upset or hostile." },
+      ],
+    },
+  ];
+}

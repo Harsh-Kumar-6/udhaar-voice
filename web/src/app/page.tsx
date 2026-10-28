@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 
 const steps = [
   { icon: Camera, title: "Snap the khata", body: "Photograph a page of the credit book. Names, amounts and dates are read for you, and you fix anything it wasn't sure about." },
-  { icon: BellRing, title: "Schedule reminders", body: "Pick customers and a time. Calls go out in batches, only inside calling hours, and retry when nobody answers." },
+  { icon: BellRing, title: "Schedule reminders", body: "Pick customers and a time. Calls go out in batches, only inside calling hours, and never twice within the gap you set." },
   { icon: PhoneCall, title: "Asha makes the call", body: "A polite AI assistant calls in the customer's own language, reminds them of the amount, and asks when they can pay." },
   { icon: Brain, title: "Every call is remembered", body: "Promises, disputes and what customers said go into the shop's memory, so the next call can say “last week you said Friday”." },
   { icon: Sparkles, title: "Ask your khata", body: "Ask “Kaun is hafte dega?” and hear the answer. Every evening, Asha calls the shopkeeper with the day's summary." },

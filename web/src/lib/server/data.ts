@@ -80,8 +80,8 @@ type EntryRow = {
   created_at: string;
 };
 type PaymentRow = { id: string; customer_id: string; amount: number; method: Payment["method"]; paid_on: string; created_at: string };
-type PromiseRow = { id: string; customer_id: string; call_id: string | null; amount: number; due_date: string; kept_at: string | null; created_at: string };
-type DisputeRow = {
+export type PromiseRow = { id: string; customer_id: string; call_id: string | null; amount: number; due_date: string; kept_at: string | null; created_at: string };
+export type DisputeRow = {
   id: string;
   customer_id: string;
   call_id: string | null;
@@ -91,7 +91,7 @@ type DisputeRow = {
   resolved_at: string | null;
   created_at: string;
 };
-type NoteRow = { id: string; customer_id: string; call_id: string | null; kind: Note["kind"]; text: string; product: string | null; created_at: string };
+export type NoteRow = { id: string; customer_id: string; call_id: string | null; kind: Note["kind"]; text: string; product: string | null; created_at: string };
 export type CallRow = {
   id: string;
   shop_id: string;
@@ -191,7 +191,7 @@ export function toPromises(rows: PromiseRow[], now: Date): PaymentPromise[] {
   });
 }
 
-const toDispute = (r: DisputeRow): Dispute => ({
+export const toDispute = (r: DisputeRow): Dispute => ({
   id: r.id,
   customerId: r.customer_id,
   callId: opt(r.call_id),
@@ -202,7 +202,7 @@ const toDispute = (r: DisputeRow): Dispute => ({
   createdAt: r.created_at,
 });
 
-const toNote = (r: NoteRow): Note => ({
+export const toNote = (r: NoteRow): Note => ({
   id: r.id,
   customerId: r.customer_id,
   callId: opt(r.call_id),
@@ -258,6 +258,25 @@ export async function loadShop(sb: SupabaseClient, userId: string): Promise<{ sh
   if (!owner || !shopRow) return null;
   const settings = check(await sb.from("shop_settings").select("*").eq("shop_id", shopRow.id).single<SettingsRow>());
   return { shop: toShop(shopRow, settings, owner), owner };
+}
+
+/** Shops by ID, with settings and owner. For server jobs (admin client) that work across shops. */
+export async function loadShopsById(admin: SupabaseClient, ids: string[]): Promise<Map<string, Shop>> {
+  if (ids.length === 0) return new Map();
+  const shops = check(await admin.from("shops").select("id, owner_id, name, upi_id").in("id", ids).returns<ShopRow[]>());
+  const [settings, owners] = await Promise.all([
+    admin.from("shop_settings").select("*").in("shop_id", ids).returns<SettingsRow[]>(),
+    admin.from("profiles").select("id, name, phone, created_at").in("id", shops.map((s) => s.owner_id)).returns<ProfileRow[]>(),
+  ]);
+  const byShop = new Map(check(settings).map((s) => [s.shop_id, s]));
+  const byOwner = new Map(check(owners).map((o) => [o.id, o]));
+  const result = new Map<string, Shop>();
+  for (const s of shops) {
+    const st = byShop.get(s.id);
+    const owner = byOwner.get(s.owner_id);
+    if (st && owner) result.set(s.id, toShop(s, st, owner));
+  }
+  return result;
 }
 
 /** Calls of every shop on a line or waiting for one. Needs the admin client: lines are shared. */

@@ -231,7 +231,7 @@ function addPastCall(db: DemoShop, sc: SeedCall, now: Date) {
     call.endedAt = plus(start, 32);
     call.durationSec = 0;
     call.costUsd = 0;
-    events.push({ at: call.endedAt, status: "no_answer", detail: "No answer after 30 s. Auto-retry in 30 min." });
+    events.push({ at: call.endedAt, status: "no_answer", detail: "No answer" });
   }
   db.calls.push(call);
 
