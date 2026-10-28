@@ -1,4 +1,4 @@
-import { GoogleGenAI, type Content, type FunctionDeclaration } from "@google/genai";
+import { GoogleGenAI, type Content, type FunctionDeclaration, type GenerateContentConfig, type GenerateContentResponse } from "@google/genai";
 import type { Language } from "@/lib/domain/types";
 
 /**
@@ -9,26 +9,51 @@ import type { Language } from "@/lib/domain/types";
 export const geminiConfigured = () => Boolean(process.env.GEMINI_API_KEY);
 export const geminiModel = () => process.env.GEMINI_MODEL || "gemini-3.8-flash";
 
+/**
+ * The model to try when the main one is busy: in testing, gemini-3.8-flash often answered 503
+ * ("high demand"), and the SDK's default five retries with back-off took minutes.
+ */
+const fallbackModel = () => process.env.GEMINI_FALLBACK_MODEL || "gemini-3.6-flash";
+const models = () => [...new Set([geminiModel(), fallbackModel()])];
+
 let client: GoogleGenAI | undefined;
 function ai(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set (web/.env.local).");
-  client ??= new GoogleGenAI({ apiKey });
+  // One attempt per model (the SDK would otherwise retry five times with back-off); each call sets its own timeout.
+  client ??= new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts: 1 } } });
   return client;
 }
+
+/**
+ * Runs `attempt` with the main model, then with the fallback if the main one fails, each within its
+ * time budget (ms). The budgets add up to well under the 60 s a server request may take.
+ */
+async function withFallback<T>(label: string, budgets: [number, number], attempt: (model: string, timeout: number) => Promise<T>): Promise<T> {
+  let last: unknown;
+  for (const [i, model] of models().entries()) {
+    try {
+      return await attempt(model, budgets[Math.min(i, 1)]);
+    } catch (err) {
+      last = err;
+      console.warn(`[gemini] ${label} failed on ${model}:`, err instanceof Error ? err.message.slice(0, 200) : err);
+    }
+  }
+  throw last;
+}
+
+const generate = (model: string, timeout: number, contents: Content[], config: GenerateContentConfig): Promise<GenerateContentResponse> =>
+  ai().models.generateContent({ model, contents, config: { ...config, httpOptions: { timeout, retryOptions: { attempts: 1 } } } });
 
 /** "audio/webm;codecs=opus" → "audio/webm". */
 const baseMime = (mime: string) => mime.split(";")[0].trim().toLowerCase();
 
-async function json<T>(contents: Content[], schema: unknown, systemInstruction: string): Promise<T> {
-  const res = await ai().models.generateContent({
-    model: geminiModel(),
-    contents,
-    config: { systemInstruction, responseMimeType: "application/json", responseJsonSchema: schema, temperature: 0 },
+async function json<T>(label: string, budgets: [number, number], contents: Content[], schema: unknown, systemInstruction: string): Promise<T> {
+  return withFallback(label, budgets, async (model, timeout) => {
+    const res = await generate(model, timeout, contents, { systemInstruction, responseMimeType: "application/json", responseJsonSchema: schema, temperature: 0 });
+    if (!res.text) throw new Error("Gemini returned nothing.");
+    return JSON.parse(res.text) as T;
   });
-  const text = res.text;
-  if (!text) throw new Error("Gemini returned nothing.");
-  return JSON.parse(text) as T;
 }
 
 /* ---------------------------------------------------------------- khata photos */
@@ -82,6 +107,8 @@ Return one row per entry: who took goods on credit, what, how much and when.
 
 export async function readKhataPhoto(image: Uint8Array, mime: string, today: string): Promise<ReadLine[]> {
   const result = await json<{ rows: ReadLine[] }>(
+    "khata photo",
+    [30_000, 20_000],
     [
       {
         role: "user",
@@ -107,6 +134,8 @@ const TRANSCRIPT_SCHEMA = {
 
 export async function transcribeQuestion(audio: Uint8Array, mime: string): Promise<{ text: string; language: Language }> {
   return json(
+    "transcription",
+    [15_000, 12_000],
     [
       {
         role: "user",
@@ -134,14 +163,19 @@ export async function answerWithTools(
   run: ToolRun,
   systemInstruction: string,
 ): Promise<{ answer: string; calls: { name: string; args: Record<string, unknown> }[] }> {
+  // A conversation stays on one model: thought signatures only mean something to the model that made them.
+  // The whole answer must arrive within ~40 s; after that the keyword assistant answers instead.
+  const deadline = Date.now() + 40_000;
+  return withFallback("ask", [12_000, 12_000], (model, timeout) => converse(model, timeout, deadline, question, tools, run, systemInstruction));
+}
+
+async function converse(model: string, timeout: number, deadline: number, question: string, tools: FunctionDeclaration[], run: ToolRun, systemInstruction: string) {
   const contents: Content[] = [{ role: "user", parts: [{ text: question }] }];
   const calls: { name: string; args: Record<string, unknown> }[] = [];
   for (let round = 0; round < 4; round++) {
-    const res = await ai().models.generateContent({
-      model: geminiModel(),
-      contents,
-      config: { systemInstruction, tools: [{ functionDeclarations: tools }], temperature: 0.2 },
-    });
+    const left = deadline - Date.now();
+    if (left < 3_000) throw new Error("Out of time");
+    const res = await generate(model, Math.min(timeout, left), contents, { systemInstruction, tools: [{ functionDeclarations: tools }], temperature: 0.2 });
     const wanted = res.functionCalls ?? [];
     if (wanted.length === 0) return { answer: (res.text ?? "").trim(), calls };
     // The model's turn goes back as it came, so its thought signatures stay attached.
