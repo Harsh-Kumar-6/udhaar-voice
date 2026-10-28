@@ -39,8 +39,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/udhaar/[met
   try {
     // Methods that need a signed-in shopkeeper check the session themselves and throw NotSignedIn.
     const sb = await userClient();
-    const handler = serverApi[name] as (c: { sb: typeof sb; now: Date }, ...a: unknown[]) => Promise<unknown>;
-    const data = await handler({ sb, now: new Date() }, ...args);
+    const handler = serverApi[name] as (c: { sb: typeof sb; now: Date; ip?: string }, ...a: unknown[]) => Promise<unknown>;
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || undefined;
+    const data = await handler({ sb, now: new Date(), ip }, ...args);
     if (WATCHING_CALLS.has(name)) after(nudgeDispatcher);
     return Response.json({ data: data ?? null });
   } catch (err) {

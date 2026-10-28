@@ -78,6 +78,8 @@ function ListCard({ title, rows }: { title: string; rows: { key: string; custome
 
 function SpokenCard({ r }: { r: DailyReport }) {
   const t = useT().report.spoken;
+  // The text in the language the evening call speaks, with the English beside it.
+  const language = useShop().data?.reportLanguage ?? "bn";
   const router = useRouter();
   const send = useApiMutation(api.sendReportCall);
   const [speaking, setSpeaking] = useState(false);
@@ -116,10 +118,10 @@ function SpokenCard({ r }: { r: DailyReport }) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 lg:grid-cols-2">
-          <p lang="bn" className="rounded-lg bg-accent px-4 py-3 leading-relaxed">
-            {r.spoken.bn}
+          <p lang={language} className="rounded-lg bg-accent px-4 py-3 leading-relaxed">
+            {r.spoken[language]}
           </p>
-          <p className="rounded-lg border px-4 py-3 text-sm leading-relaxed text-muted-foreground">{r.spoken.en}</p>
+          {language !== "en" ? <p className="rounded-lg border px-4 py-3 text-sm leading-relaxed text-muted-foreground">{r.spoken.en}</p> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button

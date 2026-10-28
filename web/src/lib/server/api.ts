@@ -15,6 +15,7 @@ import { geminiConfigured, geminiModel, readKhataPhoto, transcribeQuestion } fro
 import { batchSummaries, batchSummary, callDetail, callItems, candidates, customerDetail, dailyReport, dashboard, graph, summaries } from "./queries";
 import { runDispatcher } from "./dispatcher";
 import { batchCallsToCancel, callsToCancel, planBatchMove, planCallMove, planSchedule, type MovePlan } from "./scheduling";
+import { clearAccount, limited, recordFailure, signInKeys, signUpKeys, TOO_MANY } from "./limits";
 import { adminClient, check, maybe } from "./supabase";
 import { parseIdentifier, parseProfile, parseSignUp, WRONG_DETAILS } from "./validation";
 
@@ -23,7 +24,8 @@ import { parseIdentifier, parseProfile, parseSignUp, WRONG_DETAILS } from "./val
  * shopkeeper, so the database's access rules limit it to their shop.
  */
 
-export type Ctx = { sb: SupabaseClient; now: Date };
+/** `ip`: the caller's network address, for the sign-in limits. */
+export type Ctx = { sb: SupabaseClient; now: Date; ip?: string };
 
 type ServerApi = { [K in keyof UdhaarApi]: (ctx: Ctx, ...args: Parameters<UdhaarApi[K]>) => ReturnType<UdhaarApi[K]> };
 
@@ -106,8 +108,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const serverApi: ServerApi = {
   getSession: ({ sb }) => currentSession(sb),
 
-  signIn: async ({ sb }, { identifier, password }) => {
+  signIn: async ({ sb, now, ip }, { identifier, password }) => {
     const target = parseIdentifier(identifier);
+    const keys = signInKeys("email" in target ? target.email : target.phone, ip);
+    if (await limited(keys, now)) throw new Error(TOO_MANY);
     let email: string | undefined;
     if ("email" in target) email = target.email;
     else {
@@ -115,14 +119,21 @@ export const serverApi: ServerApi = {
       const profile = maybe(await admin.from("profiles").select("id").eq("phone", target.phone).maybeSingle<{ id: string }>());
       if (profile) email = (await admin.auth.admin.getUserById(profile.id)).data.user?.email;
     }
-    if (!email) throw new Error(WRONG_DETAILS);
-    const { error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) throw new Error(WRONG_DETAILS);
+    const { error } = email ? await sb.auth.signInWithPassword({ email, password }) : { error: true };
+    if (error) {
+      await recordFailure(keys);
+      throw new Error(WRONG_DETAILS);
+    }
+    await clearAccount(keys);
     return requireSession(sb);
   },
 
-  signUp: async ({ sb }, input) => {
+  signUp: async ({ sb, now, ip }, input) => {
     const form = parseSignUp(input);
+    // Every sign-up counts, so one network can't create accounts without end.
+    const keys = signUpKeys(ip);
+    if (await limited(keys, now)) throw new Error(TOO_MANY);
+    await recordFailure(keys);
     const admin = adminClient();
     const taken = maybe(await admin.from("profiles").select("id").eq("phone", form.phone).maybeSingle());
     if (taken) throw new Error("That number is already registered. Try signing in.");
@@ -206,6 +217,36 @@ export const serverApi: ServerApi = {
   listReminderCandidates: async (ctx) => candidates(await shopData(ctx), ctx.now),
   getCustomer: async (ctx, id) => customerDetail(await shopData(ctx), id, ctx.now),
 
+  changePassword: async ({ sb }, { current, next }) => {
+    const session = await requireSession(sb);
+    if (next.length < 6) throw new Error("The new password must be at least 6 characters.");
+    if (next === current) throw new Error("The new password is the same as the current one.");
+    const email = session.user.email;
+    if (!email) throw new Error("This account has no email to check the password against.");
+    const { error: wrong } = await sb.auth.signInWithPassword({ email, password: current });
+    if (wrong) throw new Error("Your current password is wrong.");
+    const { error } = await sb.auth.updateUser({ password: next });
+    if (error) throw new Error(`Couldn't change the password: ${error.message}`);
+  },
+
+  addCustomer: async (ctx, input) => {
+    const { shop } = await requireSession(ctx.sb);
+    const name = input.name.trim();
+    if (!name) throw new Error("Enter the customer's name.");
+    const phone = input.phone?.trim() ? normalizeIndianMobile(input.phone) : null;
+    if (input.phone?.trim() && !phone) throw new Error("Enter a 10-digit Indian mobile number.");
+    const result = await ctx.sb
+      .from("customers")
+      .insert({ shop_id: shop.id, name, name_native: input.nameNative?.trim() || null, phone, language: input.language })
+      .select("id")
+      .single<{ id: string }>();
+    if (result.error?.code === "23505") throw new Error("Another customer already has this number.");
+    const { id } = check(result);
+    const customer = (await shopData(ctx)).customers.find((c) => c.id === id);
+    if (!customer) throw new Error("Customer not found");
+    return customer;
+  },
+
   updateCustomer: async (ctx, id, patch) => {
     const row: Record<string, unknown> = {};
     if (patch.name !== undefined) row.name = patch.name.trim();
@@ -247,6 +288,37 @@ export const serverApi: ServerApi = {
     ) as string;
     const payment: Payment = { id, ...input, createdAt: iso(now) };
     return payment;
+  },
+
+  updateEntry: async ({ sb }, id, { amount, items, date }) => {
+    await requireSession(sb);
+    if (!Number.isInteger(amount) || amount <= 0) throw new Error("Enter an amount above zero.");
+    const updated = check(
+      await sb.from("ledger_entries").update({ amount, items: items.trim(), entry_date: date }).eq("id", id).is("voided_at", null).select("id"),
+    );
+    if (updated.length === 0) throw new Error("That entry no longer exists.");
+  },
+
+  deleteEntry: async ({ sb, now }, id) => {
+    await requireSession(sb);
+    check(await sb.from("ledger_entries").update({ voided_at: iso(now) }).eq("id", id).is("voided_at", null).select("id"));
+  },
+
+  updatePayment: async ({ sb }, id, { amount, method, date }) => {
+    await requireSession(sb);
+    if (!Number.isInteger(amount) || amount <= 0) throw new Error("Enter an amount above zero.");
+    const change = { amount, method, paid_on: date };
+    let result = await sb.from("payments").update(change).eq("id", id).is("voided_at", null).select("id");
+    // Before 0006 there are no voided payments, so the check isn't needed.
+    if (result.error?.code === "42703") result = await sb.from("payments").update(change).eq("id", id).select("id");
+    if (check(result).length === 0) throw new Error("That payment no longer exists.");
+  },
+
+  deletePayment: async ({ sb, now }, id) => {
+    await requireSession(sb);
+    const result = await sb.from("payments").update({ voided_at: iso(now) }).eq("id", id).is("voided_at", null).select("id");
+    if (result.error?.code === "PGRST204" || result.error?.code === "42703") throw new Error("Deleting payments needs the 0006 database update.");
+    check(result);
   },
 
   resolveDispute: async ({ sb, now }, id) => {

@@ -231,6 +231,34 @@ describe("evening report", () => {
     expect(dailyReport(db, NOW).spoken.en).not.toMatch(/Call Sunita/);
   });
 
+  it("has a Hindi summary in Devanagari, with no Bengali in it", () => {
+    const hi = dailyReport(fresh(), NOW).spoken.hi;
+    expect(hi).toMatch(/[ऀ-ॿ]/);
+    expect(hi).not.toMatch(/[ঀ-৿]/);
+    expect(hi).toContain("आज किसी ने नया वादा नहीं किया");
+  });
+
+  it("flags a call that heard a promise but no amount or date", () => {
+    const db = fresh();
+    const ramesh = db.customers.find((c) => c.id === "c01")!;
+    db.calls.push({
+      id: "k-unclear",
+      shopId: db.shop.id,
+      kind: "reminder",
+      customerId: ramesh.id,
+      toNumber: ramesh.phone,
+      language: "hi",
+      status: "completed",
+      scheduledAt: "2026-10-21T04:00:00.000Z",
+      startedAt: "2026-10-21T04:00:05.000Z",
+      transcript: [],
+      events: [],
+      extraction: { outcome: "promised", promises: [], notes: [], sentiment: "neutral", confidence: 0.9, summary: "Will pay soon." },
+    });
+    const flag = dashboard(db, NOW).attention.find((a) => a.callId === "k-unclear");
+    expect(flag).toMatchObject({ kind: "low_confidence", text: expect.stringMatching(/no amount or date/) });
+  });
+
   it("reads naturally when nobody promised anything today", () => {
     const r = dailyReport(fresh(), NOW);
     expect(r.spoken.en).toContain("No new promises today");

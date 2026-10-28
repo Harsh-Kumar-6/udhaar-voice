@@ -207,8 +207,8 @@ async function placeCall(admin: SupabaseClient, call: QueuedCall, shop: Shop, no
       owner_name: owner,
       shop_name: shop.name,
       language_name: LANGUAGE_NAMES[call.language],
-      summary: call.language === "bn" ? report.spoken.bn : report.spoken.en,
-      greeting: reportGreeting(call.language, owner, report.spoken),
+      summary: report.spoken[call.language],
+      greeting: reportGreeting(call.language, report.spoken),
     };
   } else {
     const detail = call.customerId ? customerDetail(db, call.customerId, now) : null;

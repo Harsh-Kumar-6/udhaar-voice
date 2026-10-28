@@ -24,6 +24,7 @@ export function ProfileScreen() {
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader title={t.title} description={t.description} />
       <ProfileForm key={JSON.stringify(q.data)} session={q.data} />
+      <ChangePassword />
     </div>
   );
 }
@@ -102,18 +103,66 @@ function ProfileForm({ session: { user, shop } }: { session: Session }) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t.account.title}</CardTitle>
-          <CardDescription>{t.account.password}</CardDescription>
-        </CardHeader>
-      </Card>
-
       <div className="sticky bottom-20 z-10 flex justify-end lg:static">
         <Button type="submit" size="lg" className="w-full shadow-lg sm:w-auto lg:shadow-none" disabled={save.isPending}>
           {t.save}
         </Button>
       </div>
+    </form>
+  );
+}
+
+function ChangePassword() {
+  const t = useT().profile.account;
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const change = useApiMutation(api.changePassword, { quiet: true });
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (next !== again) return setError(t.mismatch);
+    setError(null);
+    try {
+      await change.mutateAsync({ current, next });
+      toast.success(t.changed);
+      setCurrent("");
+      setNext("");
+      setAgain("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <form onSubmit={submit}>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t.title}</CardTitle>
+          <CardDescription>{t.password}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="password-current">{t.current}</Label>
+            <Input id="password-current" type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} className="h-11 sm:h-10" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="password-new">{t.next}</Label>
+            <Input id="password-new" type="password" autoComplete="new-password" required minLength={6} value={next} onChange={(e) => setNext(e.target.value)} className="h-11 sm:h-10" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="password-again">{t.confirm}</Label>
+            <Input id="password-again" type="password" autoComplete="new-password" required value={again} onChange={(e) => setAgain(e.target.value)} className="h-11 sm:h-10" />
+          </div>
+          {error ? <p className="text-sm text-destructive sm:col-span-3">{error}</p> : null}
+          <div className="sm:col-span-3">
+            <Button type="submit" variant="outline" disabled={change.isPending}>
+              {t.change}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </form>
   );
 }

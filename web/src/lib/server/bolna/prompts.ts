@@ -67,12 +67,11 @@ export function reminderGreeting(language: Language, customerName: string, shopN
 /**
  * The summary call's opening: the whole summary, then a question. A Bolna agent waits for the other
  * person after its greeting, so a greeting that only announced the summary left the owner in silence.
- * `spoken` is the report's spoken text in Bengali or English, which already starts with a hello.
+ * `spoken` is the report's spoken text in each language, which already starts with a hello.
  */
-export function reportGreeting(language: Language, ownerName: string, spoken: { bn: string; en: string }): string {
+export function reportGreeting(language: Language, spoken: { bn: string; en: string; hi: string }): string {
   if (language === "bn") return `${spoken.bn} কোনো প্রশ্ন আছে?`;
-  // There is no Hindi summary text yet; the English one is read after a Hindi hello.
-  if (language === "hi") return `नमस्ते ${ownerName} जी, मैं आशा हूँ। ${spoken.en} कोई सवाल है?`;
+  if (language === "hi") return `${spoken.hi} कोई सवाल है?`;
   return `${spoken.en} Any questions?`;
 }
 

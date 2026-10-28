@@ -465,9 +465,19 @@ export function buildReportScript(input: {
   dueTomorrow: (ReportPerson & { amount: number })[];
   disputes: (ReportPerson & { reason: string })[];
   productRequests: string[];
-}): { turns: Turn[]; spokenBn: string; spokenEn: string } {
+}): { turns: Turn[]; spokenBn: string; spokenEn: string; spokenHi: string } {
   const promised = input.promisesMade.length;
   const promisedTotal = input.promisesMade.reduce((s, p) => s + p.amount, 0);
+  // What Asha says in Hindi, line for line with the agent's lines below. Names stay in Latin letters.
+  const hi: string[] = [
+    `नमस्ते ${input.ownerFirstName} जी, मैं आशा हूँ। आज का हिसाब सुनाती हूँ।`,
+    promised
+      ? `आज ${hiNum(input.collected)} रुपये जमा हुए। ${hiNum(promised)} ${promised === 1 ? "ग्राहक ने" : "ग्राहकों ने"} कुल ${hiNum(promisedTotal)} रुपये देने का वादा किया।`
+      : `आज ${hiNum(input.collected)} रुपये जमा हुए। आज किसी ने नया वादा नहीं किया।`,
+  ];
+  if (input.dueTomorrow.length) hi.push(`कल ${input.dueTomorrow.map((d) => `${d.name} (${hiNum(d.amount)} रुपये)`).join(", ")} से पैसे आने हैं।`);
+  if (input.disputes.length) hi.push(`${hiNum(input.disputes.length)} विवाद देखने हैं: ${input.disputes.map((d) => d.name).join(", ")}।`);
+  if (input.productRequests.length) hi.push(`ग्राहकों ने माँगा: ${input.productRequests.join(", ")}।`);
   const lines: Line[] = [
     [
       "agent",
@@ -505,12 +515,15 @@ export function buildReportScript(input: {
     first ? `${first.spokenName}-কে আগে ফোন করুন, ওঁর ${bnNum(first.amount)} টাকা দেওয়ার কথা।` : "কাল কারও দেওয়ার কথা নেই, তাই কোনো তাড়া নেই।",
     first ? `Call ${first.name} first; ${rs(first.amount)} is due from them.` : "Nobody is due tomorrow, so there's no rush.",
   ]);
+  hi.push(first ? `पहले ${first.name} को कॉल कीजिए, उनसे ${hiNum(first.amount)} रुपये आने हैं।` : "कल किसी से पैसे नहीं आने हैं, तो कोई जल्दी नहीं।");
   lines.push(["shopkeeper", "ধন্যবাদ।", "Thank you."]);
   lines.push(["agent", "ভালো থাকবেন, শুভরাত্রি।", "Take care, good night."]);
+  hi.push("अपना ख्याल रखिए, शुभ रात्रि।");
   const turns = timeLines(lines);
   return {
     turns,
     spokenBn: lines.filter((l) => l[0] === "agent").map((l) => l[1]).join(" "),
     spokenEn: lines.filter((l) => l[0] === "agent").map((l) => l[2]).join(" "),
+    spokenHi: hi.join(" "),
   };
 }

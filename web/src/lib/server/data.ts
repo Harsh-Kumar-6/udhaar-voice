@@ -27,7 +27,7 @@ export type LineCall = { id: string; shopId: string; scheduledAt: string; status
 export type ShopData = {
   shop: Shop;
   customers: Customer[];
-  /** Voided entries (from undone imports) are left out. */
+  /** Voided entries (undone imports, deleted entries) and voided payments are left out. */
   entries: LedgerEntry[];
   payments: Payment[];
   promises: PaymentPromise[];
@@ -79,7 +79,7 @@ type EntryRow = {
   voided_at: string | null;
   created_at: string;
 };
-type PaymentRow = { id: string; customer_id: string; amount: number; method: Payment["method"]; paid_on: string; created_at: string };
+type PaymentRow = { id: string; customer_id: string; amount: number; method: Payment["method"]; paid_on: string; voided_at?: string | null; created_at: string };
 export type PromiseRow = { id: string; customer_id: string; call_id: string | null; amount: number; due_date: string; kept_at: string | null; created_at: string };
 export type DisputeRow = {
   id: string;
@@ -357,7 +357,7 @@ export async function loadShopData(sb: SupabaseClient, shop: Shop, lines: ShopDa
     shop,
     customers: customers.map(toCustomer),
     entries: entries.filter((e) => !e.voided_at).map(toEntry),
-    payments: payments.map(toPayment),
+    payments: payments.filter((p) => !p.voided_at).map(toPayment),
     promises: toPromises(promises, now),
     disputes: disputes.map(toDispute),
     notes: notes.map(toNote),

@@ -1,7 +1,7 @@
 "use client";
 
 import { format, parseISO } from "date-fns";
-import { Camera, Search } from "lucide-react";
+import { Camera, Search, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -17,6 +17,7 @@ import {
   StatusChip,
   TimeAgo,
 } from "@/components/app/bits";
+import { AddCustomerDialog } from "@/components/app/add-customer-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CustomerSummary } from "@/lib/api/contract";
@@ -33,6 +34,7 @@ export function CustomersScreen() {
   const q = useCustomers();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<CustomerStatus | "all">("all");
+  const [adding, setAdding] = useState(false);
 
   const all = q.data ?? [];
   const needle = query.trim().toLowerCase();
@@ -49,13 +51,19 @@ export function CustomersScreen() {
         title={c.title}
         description={c.description}
         actions={
-          <Button asChild variant="outline" size="lg">
-            <Link href="/app/khata">
-              <Camera /> {c.addFromKhata}
-            </Link>
-          </Button>
+          <>
+            <Button size="lg" onClick={() => setAdding(true)}>
+              <UserPlus /> {c.add.button}
+            </Button>
+            <Button asChild variant="outline" size="lg">
+              <Link href="/app/khata">
+                <Camera /> {c.addFromKhata}
+              </Link>
+            </Button>
+          </>
         }
       />
+      <AddCustomerDialog open={adding} onOpenChange={setAdding} />
 
       <div className="flex flex-col gap-3">
         <div className="relative max-w-sm">

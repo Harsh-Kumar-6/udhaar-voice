@@ -221,6 +221,9 @@ export function dashboard(db: ShopData, now: Date): DashboardData {
       attention.push({ kind: "refused", customer: c, text: "Will settle in person. Avoid calling for now.", callId: last.id });
     if (ex.promises.length > 0 && confidenceLabel(ex.confidence) !== "High" && s.status === "promised")
       attention.push({ kind: "low_confidence", customer: c, text: `Check the promise: ${confidenceLabel(ex.confidence).toLowerCase()} confidence.`, callId: last.id });
+    // A promise heard without an amount or date saves nothing, so the shopkeeper should hear the call.
+    if (ex.outcome === "promised" && ex.promises.length === 0 && s.balance > 0)
+      attention.push({ kind: "low_confidence", customer: c, text: "Said they'd pay, but no amount or date was heard. Check the call.", callId: last.id });
   }
 
   const byDay = Array.from({ length: 7 }, (_, i) => {
@@ -301,7 +304,7 @@ export function dailyReportWithScript(db: ShopData, now: Date): { report: DailyR
       callsMade: callsToday.length,
       callsAnswered: callsToday.filter((k) => k.status === "completed").length,
       productRequests,
-      spoken: { bn: script.spokenBn, en: script.spokenEn },
+      spoken: { bn: script.spokenBn, en: script.spokenEn, hi: script.spokenHi },
     },
     turns: script.turns,
   };

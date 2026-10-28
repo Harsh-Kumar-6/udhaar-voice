@@ -103,8 +103,8 @@ export type DailyReport = {
   callsMade: number;
   callsAnswered: number;
   productRequests: { customer: Customer; note: Note }[];
-  /** The spoken summary the evening call reads out. */
-  spoken: { bn: string; en: string };
+  /** The spoken summary the evening call reads out, in each language. */
+  spoken: { bn: string; en: string; hi: string };
 };
 
 export type GraphNodeType = "shop" | "customer" | "promise" | "dispute" | "note" | "product";
@@ -240,6 +240,8 @@ export interface UdhaarApi {
   signOut(): Promise<void>;
   /** Throws if validation fails or the phone or email belongs to another account. */
   updateProfile(input: ProfileInput): Promise<Session>;
+  /** Throws if the current password is wrong or the new one is too short. */
+  changePassword(input: { current: string; next: string }): Promise<void>;
 
   getShop(): Promise<Shop>;
   updateShop(patch: Partial<Omit<Shop, "id">>): Promise<Shop>;
@@ -247,9 +249,18 @@ export interface UdhaarApi {
   listCustomers(): Promise<CustomerSummary[]>;
   listReminderCandidates(): Promise<EligibleCustomer[]>;
   getCustomer(id: string): Promise<CustomerDetail | null>;
+  /** Throws if another customer already has the phone number. */
+  addCustomer(input: { name: string; nameNative?: string; phone?: string; language: Language }): Promise<Customer>;
   updateCustomer(id: string, patch: Partial<Pick<Customer, "name" | "nameNative" | "phone" | "language" | "optedOut">>): Promise<Customer>;
   addEntry(input: { customerId: string; amount: number; items: string; date: string; source: LedgerEntry["source"] }): Promise<LedgerEntry>;
   recordPayment(input: { customerId: string; amount: number; method: Payment["method"]; date: string }): Promise<Payment>;
+  /** Corrects a saved entry. */
+  updateEntry(id: string, patch: { amount: number; items: string; date: string }): Promise<void>;
+  /** Removes an entry from the khata; it is kept, voided, for history. */
+  deleteEntry(id: string): Promise<void>;
+  updatePayment(id: string, patch: { amount: number; method: Payment["method"]; date: string }): Promise<void>;
+  /** Removes a payment from the khata; it is kept, voided, for history. */
+  deletePayment(id: string): Promise<void>;
   resolveDispute(id: string): Promise<void>;
 
   listCalls(): Promise<CallListItem[]>;

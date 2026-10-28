@@ -13,6 +13,7 @@ import {
   Plus,
   Sparkles,
   Users,
+  Pencil,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -382,11 +383,16 @@ function Disputes({ d }: { d: CustomerDetail }) {
   );
 }
 
+type LedgerLine =
+  | { id: string; date: string; kind: "entry"; amount: number; text: string; photo: boolean; items: string }
+  | { id: string; date: string; kind: "payment"; amount: number; text: string; photo: false; method: "cash" | "upi" };
+
 function Ledger({ d }: { d: CustomerDetail }) {
   const c = useT().customers.detail;
-  const rows = [
-    ...d.entries.map((e) => ({ id: e.id, date: e.date, kind: "entry" as const, amount: e.amount, text: e.items, photo: e.source === "photo" })),
-    ...d.payments.map((p) => ({ id: p.id, date: p.date, kind: "payment" as const, amount: p.amount, text: p.method.toUpperCase(), photo: false })),
+  const [editing, setEditing] = useState<LedgerLine | null>(null);
+  const rows: LedgerLine[] = [
+    ...d.entries.map((e) => ({ id: e.id, date: e.date, kind: "entry" as const, amount: e.amount, text: e.items, photo: e.source === "photo", items: e.items })),
+    ...d.payments.map((p) => ({ id: p.id, date: p.date, kind: "payment" as const, amount: p.amount, text: p.method.toUpperCase(), photo: false as const, method: p.method })),
   ].sort((a, b) => b.date.localeCompare(a.date));
   return (
     <Card>
@@ -403,11 +409,93 @@ function Ledger({ d }: { d: CustomerDetail }) {
                 {r.photo ? <span className="ml-1.5 text-xs text-muted-foreground">({c.fromPhoto})</span> : null}
               </span>
               <Money amount={r.amount} className={cn("text-sm font-semibold", r.kind === "entry" ? "text-due" : "text-paid")} />
+              <Button variant="ghost" size="icon" className="-mr-2 size-8 text-muted-foreground" aria-label={c.ledgerEdit.rowActions} onClick={() => setEditing(r)}>
+                <Pencil className="size-3.5" />
+              </Button>
             </li>
           ))}
         </ul>
+        {editing ? <LedgerEditDialog key={editing.id} line={editing} onClose={() => setEditing(null)} /> : null}
       </CardContent>
     </Card>
+  );
+}
+
+/** Corrects or deletes one ledger line. Deleting needs a second tap. */
+function LedgerEditDialog({ line, onClose }: { line: LedgerLine; onClose: () => void }) {
+  const t = useT().customers.detail;
+  const e = t.ledgerEdit;
+  const [amount, setAmount] = useState(String(line.amount));
+  const [items, setItems] = useState(line.kind === "entry" ? line.items : "");
+  const [method, setMethod] = useState<"cash" | "upi">(line.kind === "payment" ? line.method : "cash");
+  const [date, setDate] = useState(line.date);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const updateEntry = useApiMutation((p: { amount: number; items: string; date: string }) => api.updateEntry(line.id, p));
+  const updatePayment = useApiMutation((p: { amount: number; method: "cash" | "upi"; date: string }) => api.updatePayment(line.id, p));
+  const remove = useApiMutation(() => (line.kind === "entry" ? api.deleteEntry(line.id) : api.deletePayment(line.id)));
+  const busy = updateEntry.isPending || updatePayment.isPending || remove.isPending;
+
+  const save = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    const value = Math.round(Number(amount));
+    if (!Number.isFinite(value) || value <= 0 || !date || (line.kind === "entry" && !items.trim())) return setError(t.entryDialog.invalid);
+    const done = line.kind === "entry" ? await attempt(updateEntry.mutateAsync({ amount: value, items: items.trim(), date })) : await attempt(updatePayment.mutateAsync({ amount: value, method, date }));
+    if (!done) return;
+    toast.success(e.saved);
+    onClose();
+  };
+
+  const del = async () => {
+    if (!confirming) return setConfirming(true);
+    if (!(await attempt(remove.mutateAsync(undefined)))) return;
+    toast.success(e.deleted);
+    onClose();
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <form onSubmit={save} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>{line.kind === "entry" ? e.entryTitle : e.paymentTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-amount">{t.entryDialog.amount}</Label>
+              <Input id="edit-amount" inputMode="numeric" value={amount} onChange={(x) => { setAmount(x.target.value); setError(null); }} aria-invalid={!!error} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-date">{e.date}</Label>
+              <Input id="edit-date" type="date" value={date} max={toDateKey(new Date())} onChange={(x) => setDate(x.target.value)} />
+            </div>
+          </div>
+          {line.kind === "entry" ? (
+            <div className="space-y-2">
+              <Label htmlFor="edit-items">{t.entryDialog.items}</Label>
+              <Input id="edit-items" value={items} onChange={(x) => { setItems(x.target.value); setError(null); }} />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label>{t.paymentDialog.method}</Label>
+              <ToggleGroup type="single" variant="outline" value={method} onValueChange={(v) => v && setMethod(v as "cash" | "upi")}>
+                <ToggleGroupItem value="cash">{t.paymentDialog.cash}</ToggleGroupItem>
+                <ToggleGroupItem value="upi">{t.paymentDialog.upi}</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+          )}
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button type="button" variant={confirming ? "destructive" : "ghost"} disabled={busy} onClick={del} onBlur={() => setConfirming(false)}>
+              {confirming ? e.confirmDelete : e.delete}
+            </Button>
+            <Button type="submit" size="lg" disabled={busy}>
+              {e.save}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
