@@ -487,7 +487,6 @@ export const or: Dictionary = {
       noAccount: "ନୂଆ ଅଟନ୍ତି?",
       signUpLink: "ନୂଆ ଆକାଉଣ୍ଟ ଖୋଲନ୍ତୁ",
       invalidPhone: "10 ଅଙ୍କର ଭାରତୀୟ ମୋବାଇଲ୍ ନମ୍ବର ଲେଖନ୍ତୁ।",
-      hint: (phone: string, email: string, password: string) => `ଡେମୋ: ${phone} କିମ୍ବା ${email} · ${password}`,
     },
     signup: {
       title: "ନୂଆ ଆକାଉଣ୍ଟ ଖୋଲନ୍ତୁ",

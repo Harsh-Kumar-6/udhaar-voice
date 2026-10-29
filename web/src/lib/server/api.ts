@@ -257,6 +257,8 @@ export const serverApi: ServerApi = {
     if (wrong) throw new Error("Your current password is wrong.");
     const { error } = await sb.auth.updateUser({ password: next });
     if (error) throw new Error(`Couldn't change the password: ${error.message}`);
+    // Anyone signed in elsewhere with the old password is signed out; this device stays signed in.
+    await sb.auth.signOut({ scope: "others" });
   },
 
   addCustomer: async (ctx, input) => {

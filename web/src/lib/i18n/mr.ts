@@ -487,7 +487,6 @@ export const mr: Dictionary = {
       noAccount: "नवीन आहात?",
       signUpLink: "नवीन खाते उघडा",
       invalidPhone: "10 अंकी भारतीय मोबाईल नंबर लिहा.",
-      hint: (phone: string, email: string, password: string) => `डेमो: ${phone} किंवा ${email} · ${password}`,
     },
     signup: {
       title: "नवीन खाते उघडा",

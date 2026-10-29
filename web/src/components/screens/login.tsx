@@ -13,7 +13,6 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import type { SignInInput } from "@/lib/api/contract";
 import { useApiMutation } from "@/lib/api/hooks";
-import { DEMO_EMAIL, DEMO_PASSWORD, DEMO_PHONE } from "@/lib/demo/account";
 import { useT } from "@/lib/i18n";
 
 export function LoginScreen() {
@@ -74,9 +73,6 @@ export function LoginScreen() {
             <Link href="/signup" className="font-medium text-primary underline-offset-4 hover:underline">
               {t.login.signUpLink}
             </Link>
-          </p>
-          <p className="mt-6 rounded-md border bg-muted/40 px-3 py-2 text-center font-mono text-xs text-muted-foreground">
-            {t.login.hint(DEMO_PHONE, DEMO_EMAIL, DEMO_PASSWORD)}
           </p>
         </CardContent>
       </Card>

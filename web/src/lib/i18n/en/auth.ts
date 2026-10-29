@@ -9,7 +9,6 @@ export const auth = {
     noAccount: "New here?",
     signUpLink: "Create your khata",
     invalidPhone: "Enter a 10-digit Indian mobile number.",
-    hint: (phone: string, email: string, password: string) => `Demo: ${phone} or ${email} · ${password}`,
   },
   signup: {
     title: "Create your khata",

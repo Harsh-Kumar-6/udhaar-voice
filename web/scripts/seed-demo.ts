@@ -6,7 +6,7 @@
  */
 import "../src/lib/server/timezone";
 import { createClient } from "@supabase/supabase-js";
-import { DEMO_EMAIL, DEMO_PASSWORD, DEMO_PHONE_E164 } from "../src/lib/demo/account";
+import { DEMO_EMAIL, DEMO_PHONE_E164 } from "../src/lib/demo/account";
 import { createSeed } from "../src/lib/demo/seed";
 
 const url = process.env.SUPABASE_URL;
@@ -36,11 +36,13 @@ async function removeOldDemo() {
 }
 
 async function main() {
+  const password = process.env.DEMO_PASSWORD;
+  if (!password || password.length < 12) throw new Error("Set DEMO_PASSWORD (12 characters or more) in web/.env.local first.");
   const now = new Date();
   const seed = createSeed(now);
   await removeOldDemo();
 
-  const created = await admin.auth.admin.createUser({ email: DEMO_EMAIL, password: DEMO_PASSWORD, email_confirm: true });
+  const created = await admin.auth.admin.createUser({ email: DEMO_EMAIL, password, email_confirm: true });
   if (created.error || !created.data.user) throw new Error(`create demo user: ${created.error?.message}`);
   const userId = created.data.user.id;
 
@@ -196,7 +198,7 @@ async function main() {
     ),
   );
 
-  console.log(`Demo shop ready: ${seed.customers.length} customers, ${seed.calls.length} past calls. Sign in with ${DEMO_EMAIL} / ${DEMO_PASSWORD}.`);
+  console.log(`Demo shop ready: ${seed.customers.length} customers, ${seed.calls.length} past calls. Sign in with ${DEMO_EMAIL} and DEMO_PASSWORD.`);
 }
 
 main().catch((err) => {

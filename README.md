@@ -19,7 +19,7 @@ npm run dev          # http://localhost:3000
 | `npm run typecheck` | Regenerates route types, then runs TypeScript |
 | `npm run lint` | ESLint |
 | `npm run build` | Production build (also checks Cache Components rules) |
-| `npm run db:seed` | Loads the demo shop (Maa Tara Variety Stores) and its login into Supabase, replacing any earlier copy |
+| `npm run db:seed` | Loads the demo shop (Maa Tara Variety Stores) and its login into Supabase, replacing any earlier copy; the password comes from `DEMO_PASSWORD` in `web/.env.local` |
 | `npm run bolna:setup` | Writes the prompts, greeting, webhook and extractions onto the two Bolna agents |
 
 ## What's where
