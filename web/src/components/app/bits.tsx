@@ -5,7 +5,7 @@ import { AlertTriangle, Inbox, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { confidenceLabel, formatINR, maskPhone } from "@/lib/domain/rules";
+import { confidenceLabel, formatINR, formatPhone } from "@/lib/domain/rules";
 import type { CallOutcome, CallStatus, CustomerStatus, Language } from "@/lib/domain/types";
 import { useT } from "@/lib/i18n";
 import { useNow } from "@/hooks/use-now";
@@ -19,14 +19,9 @@ export function Money({ amount, className }: { amount: number; className?: strin
   return <span className={cn("tabular font-mono", className)}>{formatINR(amount)}</span>;
 }
 
-export function MaskedPhone({ phone, className }: { phone: string; className?: string }) {
-  const t = useT();
+export function PhoneNumber({ phone, className }: { phone: string; className?: string }) {
   if (!phone) return <span className={cn("text-muted-foreground italic", className)}>No number</span>;
-  return (
-    <span className={cn("tabular font-mono text-muted-foreground", className)} title={t.common.prototype.masked}>
-      {maskPhone(phone)}
-    </span>
-  );
+  return <span className={cn("tabular font-mono text-muted-foreground", className)}>{formatPhone(phone)}</span>;
 }
 
 export function LanguageTag({ language }: { language: Language }) {

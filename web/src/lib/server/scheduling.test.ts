@@ -67,7 +67,6 @@ describe("seed", () => {
     const g = graph(fresh(), NOW);
     const ids = new Set(g.nodes.map((n) => n.id));
     expect(g.edges.every((e) => ids.has(e.source) && ids.has(e.target))).toBe(true);
-    expect(g.edges.some((e) => e.kind === "pays_through")).toBe(true);
   });
 });
 

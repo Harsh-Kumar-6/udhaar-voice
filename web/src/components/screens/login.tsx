@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/app/password-input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import type { SignInInput } from "@/lib/api/contract";
@@ -61,7 +62,7 @@ export function LoginScreen() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">{t.login.password}</Label>
-              <Input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!error} />
+              <PasswordInput id="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!error} />
             </div>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
             <Button type="submit" size="lg" className="w-full" disabled={signIn.isPending}>

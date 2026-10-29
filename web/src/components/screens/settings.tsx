@@ -1,10 +1,8 @@
 "use client";
 
 import { FlaskConical } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
+import { useRef, useState } from "react";
 import { ErrorBlock, LoadingBlock, PageHeader } from "@/components/app/bits";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,14 +11,14 @@ import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
 import { attempt, useApiMutation, useShop } from "@/lib/api/hooks";
-import { Shop as ShopSchema, type Language, type Shop } from "@/lib/domain/types";
+import { LANGUAGES, Shop as ShopSchema, type Language, type Shop } from "@/lib/domain/types";
 import { setAppLanguage, useAppLanguage, useT } from "@/lib/i18n";
 
 const HOURS = Array.from({ length: 25 }, (_, h) => h);
 const hourLabel = (h: number) => (h === 0 || h === 24 ? "12 AM" : h === 12 ? "12 PM" : h < 12 ? `${h} AM` : `${h - 12} PM`);
-const LANGS: Language[] = ["bn", "hi", "en"];
+const LANGS = LANGUAGES;
 /** Each language's name in its own script, so anyone can find theirs. */
-const LANGUAGE_NAMES: Record<Language, string> = { en: "English", bn: "বাংলা", hi: "हिन्दी" };
+const LANGUAGE_NAMES: Record<Language, string> = { en: "English", hi: "हिन्दी", or: "ଓଡ଼ିଆ", bn: "বাংলা", mr: "मराठी" };
 
 export function SettingsScreen() {
   const t = useT().settings;
@@ -31,34 +29,54 @@ export function SettingsScreen() {
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader title={t.title} description={t.description} />
       <AppLanguage />
-      <WorkflowForm key={JSON.stringify(q.data)} shop={q.data} />
+      <WorkflowForm key={q.data.id} shop={q.data} />
       <PrototypeControls shop={q.data} />
     </div>
   );
 }
 
-/** Shop-wide settings for how calls work. The shopkeeper's own details live on the Profile page. */
+const GAP_DAYS = Array.from({ length: 14 }, (_, i) => i + 1);
+/** Bolna's agents end every call at 3 minutes, so a longer limit would never apply. */
+const CALL_MINUTES = [1, 2, 3];
+
+/**
+ * Shop-wide settings for how calls work, saved as they change. Only the changed fields are sent, so a
+ * switch saved elsewhere (the demo controls) isn't overwritten. The owner's details live on Profile.
+ */
 function WorkflowForm({ shop }: { shop: Shop }) {
   const t = useT();
   const s = t.settings;
   const [draft, setDraft] = useState<Shop>(shop);
   const [invalid, setInvalid] = useState<Set<string>>(new Set());
+  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
   const save = useApiMutation(api.updateShop);
-  const set = <K extends keyof Shop>(key: K, value: Shop[K]) => setDraft((d) => ({ ...d, [key]: value }));
+  const pending = useRef<Partial<Shop>>({});
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsed = ShopSchema.safeParse(draft);
+  const set = <K extends keyof Shop>(key: K, value: Shop[K]) => {
+    const next = { ...draft, [key]: value };
+    setDraft(next);
+    const parsed = ShopSchema.safeParse(next);
     if (!parsed.success) {
       setInvalid(new Set(parsed.error.issues.map((i) => String(i.path[0]))));
-      return toast.error(s.invalid);
+      return;
     }
     setInvalid(new Set());
-    if (await attempt(save.mutateAsync(parsed.data))) toast.success(s.saved);
+    pending.current = { ...pending.current, [key]: value };
+    clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
+      const patch = pending.current;
+      pending.current = {};
+      setStatus("saving");
+      setStatus((await attempt(save.mutateAsync(patch))) ? "saved" : "idle");
+    }, 600);
   };
 
   return (
-    <form onSubmit={submit} className="space-y-6">
+    <div className="space-y-6">
+      <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+        {status === "saving" ? s.saving : status === "saved" ? s.saved : s.autosave}
+      </p>
       <Card>
         <CardHeader>
           <CardTitle>{s.calling.title}</CardTitle>
@@ -77,12 +95,12 @@ function WorkflowForm({ shop }: { shop: Shop }) {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="shop-gap">{s.calling.gap}</Label>
-            <Input id="shop-gap" type="number" min={1} max={14} value={draft.reminderGapDays} onChange={(e) => set("reminderGapDays", Number(e.target.value))} aria-invalid={invalid.has("reminderGapDays") || undefined} />
+            <NumberSelect id="shop-gap" value={draft.reminderGapDays} options={GAP_DAYS} onChange={(n) => set("reminderGapDays", n)} />
             <p className="text-xs text-muted-foreground">{s.calling.gapHint}</p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="shop-max">{s.calling.maxMinutes}</Label>
-            <Input id="shop-max" type="number" min={1} max={10} value={draft.maxCallMinutes} onChange={(e) => set("maxCallMinutes", Number(e.target.value))} aria-invalid={invalid.has("maxCallMinutes") || undefined} />
+            <NumberSelect id="shop-max" value={Math.min(draft.maxCallMinutes, 3)} options={CALL_MINUTES} onChange={(n) => set("maxCallMinutes", n)} />
           </div>
         </CardContent>
       </Card>
@@ -111,7 +129,7 @@ function WorkflowForm({ shop }: { shop: Shop }) {
             <div className="grid gap-5 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="report-time">{s.summary.time}</Label>
-                <Input id="report-time" type="time" value={draft.reportTime} onChange={(e) => set("reportTime", e.target.value)} className="h-11 sm:h-10" />
+                <Input id="report-time" type="time" value={draft.reportTime} onChange={(e) => set("reportTime", e.target.value)} className="h-11 sm:h-10" aria-invalid={invalid.has("reportTime") || undefined} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="report-language">{s.summary.language}</Label>
@@ -122,12 +140,24 @@ function WorkflowForm({ shop }: { shop: Shop }) {
         </CardContent>
       </Card>
 
-      <div className="sticky bottom-20 z-10 flex justify-end lg:static">
-        <Button type="submit" size="lg" className="w-full shadow-lg sm:w-auto lg:shadow-none" disabled={save.isPending}>
-          {s.save}
-        </Button>
-      </div>
-    </form>
+    </div>
+  );
+}
+
+function NumberSelect({ id, value, options, onChange }: { id: string; value: number; options: number[]; onChange: (n: number) => void }) {
+  return (
+    <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
+      <SelectTrigger id={id} className="h-11 w-full sm:h-10 sm:w-32">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((n) => (
+          <SelectItem key={n} value={String(n)}>
+            {n}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -141,8 +171,8 @@ function AppLanguage() {
         <CardDescription>{t.hint}</CardDescription>
       </CardHeader>
       <CardContent>
-        <ToggleGroup type="single" variant="outline" value={language} onValueChange={(v) => v && setAppLanguage(v as Language)}>
-          {(["en", "bn", "hi"] as const).map((l) => (
+        <ToggleGroup type="single" variant="outline" className="flex-wrap" value={language} onValueChange={(v) => v && setAppLanguage(v as Language)}>
+          {LANGUAGES.map((l) => (
             <ToggleGroupItem key={l} value={l} lang={l} id={`app-language-${l}`}>
               {LANGUAGE_NAMES[l]}
             </ToggleGroupItem>

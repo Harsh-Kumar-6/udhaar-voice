@@ -1,6 +1,6 @@
 import { addDays } from "date-fns";
 import { matchSavedEntry, toDateKey } from "@/lib/domain/rules";
-import type { KhataExtraction, KhataRow } from "@/lib/api/contract";
+import type { KhataExtraction, KhataLineInput, KhataRow } from "@/lib/api/contract";
 import { SAMPLE_KHATA } from "@/lib/demo/khata-sample";
 import type { ShopData } from "./data";
 import type { ReadLine } from "./gemini";
@@ -17,6 +17,8 @@ export type Line = {
   date: string;
   items: string;
   confidence: { name: number; amount: number; date: number; items: number };
+  /** For new customers, when the line came with a number (typed or spreadsheet). */
+  phone?: string;
 };
 
 export function toRows(db: ShopData, lines: Line[]): KhataRow[] {
@@ -36,7 +38,7 @@ export function toRows(db: ShopData, lines: Line[]): KhataRow[] {
       date: { value: line.date, confidence: line.confidence.date },
       items: { value: line.items, confidence: line.confidence.items },
       matchCustomerId: match?.id,
-      phone: match ? undefined : "",
+      phone: match ? undefined : (line.phone ?? ""),
       language: match?.language ?? db.shop.defaultCustomerLanguage,
       saved: saved && { kind: saved.kind, entryId: saved.entry.id, amount: saved.entry.amount, items: saved.entry.items },
       action: saved?.kind === "duplicate" ? "skip" : saved ? "update" : "add",
@@ -65,6 +67,22 @@ export function fromReadLines(lines: ReadLine[], now: Date): Line[] {
       confidence: { ...r.confidence, date: date === r.date ? r.confidence.date : Math.min(r.confidence.date, 0.4) },
     };
   });
+}
+
+/** Typed or spreadsheet lines: what was given is certain, so every field is fully confident. */
+export function fromInputLines(lines: KhataLineInput[], now: Date): Line[] {
+  const today = toDateKey(now);
+  return lines
+    .map((l) => ({
+      name: String(l.name ?? "").trim(),
+      nameNative: String(l.nameNative ?? "").trim(),
+      amount: Math.round(Number(l.amount)),
+      date: /^\d{4}-\d{2}-\d{2}$/.test(l.date ?? "") && l.date <= today ? l.date : today,
+      items: String(l.items ?? "").trim(),
+      phone: l.phone?.trim() || undefined,
+      confidence: { name: 1, amount: 1, date: 1, items: 1 },
+    }))
+    .filter((l) => l.name && Number.isFinite(l.amount) && l.amount > 0);
 }
 
 /** Where a photo is kept: its shop's folder in the private khata-photos bucket. */

@@ -69,7 +69,7 @@ export default function LandingPage() {
             <p className="font-mono text-xs font-semibold tracking-wider text-primary uppercase">For neighbourhood shops that sell on credit</p>
             <h1 className="text-4xl leading-[1.05] font-extrabold sm:text-5xl lg:text-6xl">Your khata, collected by voice.</h1>
             <p className="max-w-xl text-lg text-muted-foreground">
-              Photograph a shop&apos;s credit ledger. Udhaar Voice calls each customer in Bengali or Hindi, records promises to pay, and lets the shopkeeper ask the khata anything by voice.
+              Photograph a shop&apos;s credit ledger. Udhaar Voice calls each customer in their own language, records promises to pay, and lets the shopkeeper ask the khata anything by voice.
             </p>
             <div className="flex flex-wrap gap-3">
               <Button asChild size="lg" className="h-11 px-5 text-base">
@@ -85,7 +85,7 @@ export default function LandingPage() {
             </div>
             <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
               <li className="flex items-center gap-1.5">
-                <Languages className="size-4 text-primary" /> Bengali, Hindi, English
+                <Languages className="size-4 text-primary" /> English, Hindi, Odia, Bengali, Marathi
               </li>
               <li className="flex items-center gap-1.5">
                 <Clock className="size-4 text-primary" /> Calls 8 AM–7 PM only
@@ -185,7 +185,7 @@ export default function LandingPage() {
       <footer className="border-t">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-sm text-muted-foreground sm:px-6">
           <span>Udhaar Voice · Bolna Buildathon 2026</span>
-          <span>Voice agents by Bolna · Speech by Sarvam and ElevenLabs · Khata reading by Gemini</span>
+          <span>Voice agents by Bolna · Speech by Sarvam and ElevenLabs · Khata reading and voice questions by Gemini</span>
         </div>
       </footer>
     </div>

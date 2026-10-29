@@ -12,7 +12,7 @@ Bolna Buildathon project. Read `README.md` first. The app lives in `web/` (Next.
 - **Calls go through `lib/server/dispatcher.ts`** (claim, then dial; calling hours per shop) and their results through `lib/server/call-results.ts`, which reads the call back from Bolna's API. Prompts and extraction names live in `lib/server/bolna/prompts.ts`; after changing them, `npm run bolna:setup` updates the agents.
 - **Gemini lives in `lib/server/gemini.ts`**; every answer is checked against a JSON schema. Assistant tools are pure functions over `ShopData` in `lib/server/ask.ts`; add a test for each new tool.
 - **The server runs in India time** (`lib/server/timezone.ts`, imported first by the API route), because the rules read local hours and dates.
-- **All shopkeeper-facing text goes in `src/lib/i18n/en/*.ts`**, with the same keys in `src/lib/i18n/bn.ts` (Bengali) and `src/lib/i18n/hi.ts` (Hindi), and is read with `useT()`. The typechecker fails if a translation is missing. The landing page and `/try` are English-only and may inline text.
+- **All shopkeeper-facing text goes in `src/lib/i18n/en/*.ts`**, with the same keys in `src/lib/i18n/hi.ts` (Hindi), `or.ts` (Odia), `bn.ts` (Bengali) and `mr.ts` (Marathi), and is read with `useT()`. The typechecker fails if a translation is missing. The landing page and `/try` are English-only and may inline text.
 - One modular monolith. No microservices.
 
 ## Next.js 16 gotchas (this version differs from older training data)
@@ -35,7 +35,7 @@ Run all four checks before saying work is done.
 - Calling lines are shared by every shop on our Bolna account (2 on trial). Waiting calls get lines in `dialOrder` (turns between shops) and show their place in line.
 - Never call opted-out customers, a number that last reached someone else (until it changes), or someone who refused in the last 14 days.
 - The agent discloses it is an AI, never threatens, never tells anyone else what a customer owes.
-- Phone numbers are shown masked everywhere except the editor.
+- Phone numbers are shown only to the shop's own signed-in owner, formatted with `formatPhone`; never in logs, the landing page or `/try`.
 
 ## Credits
 

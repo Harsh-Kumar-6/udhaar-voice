@@ -105,7 +105,7 @@ export type StoredAgent = Record<string, unknown> & {
       multilingual_config?: {
         enabled: boolean;
         language_switch_trigger?: string;
-        languages: Record<string, { system_prompt?: string | null; handoff_message?: string | null }>;
+        languages: Record<string, Record<string, unknown> & { system_prompt?: string | null; handoff_message?: string | null }>;
       };
     };
   }[];

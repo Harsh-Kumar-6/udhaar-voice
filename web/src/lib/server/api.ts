@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { format } from "date-fns";
 import { normalizeIndianMobile, toDateKey } from "@/lib/domain/rules";
-import { Shop as ShopSchema, type Call, type LedgerEntry, type Payment } from "@/lib/domain/types";
+import { Shop as ShopSchema, type Call, type Language, type LedgerEntry, type Payment } from "@/lib/domain/types";
 import type { KhataImportSummary, Session, UdhaarApi } from "@/lib/api/contract";
 import { buildReminderScript } from "@/lib/demo/scripts";
 import { ask } from "./ask";
@@ -10,7 +10,7 @@ import { agentIds, bolnaConfigured, tryCallsReal } from "./bolna/config";
 import { BOLNA_LANGUAGE, LANGUAGE_NAMES, reminderGreeting } from "./bolna/prompts";
 import { loadLines, loadShop, loadShopData, toCall, type CallRow, type ShopData } from "./data";
 import { env } from "./env";
-import { fromReadLines, photoPath, readSamplePage, toRows } from "./khata";
+import { fromInputLines, fromReadLines, photoPath, readSamplePage, toRows } from "./khata";
 import { geminiConfigured, geminiModel, readKhataPhoto, transcribeQuestion } from "./gemini";
 import { batchSummaries, batchSummary, callDetail, callItems, candidates, customerDetail, dailyReport, dashboard, graph, summaries } from "./queries";
 import { runDispatcher } from "./dispatcher";
@@ -105,6 +105,27 @@ async function dialNow() {
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** What a new shopkeeper filled in, kept on their account until the email is confirmed. */
+type PendingShop = { ownerName: string; phone: string; shopName: string; language: Language };
+
+/** The profile, shop and settings for a newly confirmed account. Safe to call twice. */
+async function createShop(userId: string, s: PendingShop) {
+  const admin = adminClient();
+  const existing = maybe(await admin.from("shops").select("id").eq("owner_id", userId).maybeSingle());
+  if (existing) return;
+  try {
+    const profile = await admin.from("profiles").insert({ id: userId, name: s.ownerName, phone: s.phone });
+    if (profile.error?.code === "23505") throw new Error("That number is already registered. Try signing in.");
+    maybe(profile);
+    const shop = check(await admin.from("shops").insert({ owner_id: userId, name: s.shopName }).select("id").single<{ id: string }>());
+    maybe(await admin.from("shop_settings").insert({ shop_id: shop.id, report_language: s.language, default_customer_language: s.language }));
+  } catch (err) {
+    // Deleting the user removes the profile and shop with it, so the email and number can be used again.
+    await admin.auth.admin.deleteUser(userId);
+    throw err;
+  }
+}
+
 export const serverApi: ServerApi = {
   getSession: ({ sb }) => currentSession(sb),
 
@@ -137,32 +158,40 @@ export const serverApi: ServerApi = {
     const admin = adminClient();
     const taken = maybe(await admin.from("profiles").select("id").eq("phone", form.phone).maybeSingle());
     if (taken) throw new Error("That number is already registered. Try signing in.");
+    // An earlier sign-up that never entered its code has no shop yet: start it again.
+    const unconfirmed = await admin.rpc("unconfirmed_signup", { p_email: form.email });
+    if (typeof unconfirmed.data === "string") {
+      const { error } = await admin.auth.admin.deleteUser(unconfirmed.data);
+      if (error) throw new Error("Couldn't restart the sign-up. Try again.");
+    }
     if (await emailInUse(form.email)) throw new Error("That email is already registered. Try signing in.");
 
-    // Created confirmed, so no confirmation email is needed.
-    const created = await admin.auth.admin.createUser({ email: form.email, password: form.password, email_confirm: true });
-    if (created.error || !created.data.user) {
-      const exists = created.error?.code === "email_exists" || /already/i.test(created.error?.message ?? "");
-      throw new Error(exists ? "That email is already registered. Try signing in." : (created.error?.message ?? "Couldn't create the account."));
-    }
-    const userId = created.data.user.id;
-    try {
-      maybe(await admin.from("profiles").insert({ id: userId, name: form.ownerName, phone: form.phone }));
-      const shop = check(await admin.from("shops").insert({ owner_id: userId, name: form.shopName }).select("id").single<{ id: string }>());
-      maybe(
-        await admin
-          .from("shop_settings")
-          .insert({ shop_id: shop.id, report_language: form.language, default_customer_language: form.language }),
-      );
-    } catch (err) {
-      // Deleting the user removes the profile and shop with it.
-      await admin.auth.admin.deleteUser(userId);
-      throw err;
-    }
-    const { error } = await sb.auth.signInWithPassword({ email: form.email, password: form.password });
-    if (error) throw new Error(error.message);
+    // The shop is created once the email is confirmed; until then its details wait on the user.
+    const signup: PendingShop = { ownerName: form.ownerName, phone: form.phone, shopName: form.shopName, language: form.language };
+    const { data, error } = await sb.auth.signUp({ email: form.email, password: form.password, options: { data: { signup } } });
+    if (error || !data.user) throw new Error(/already/i.test(error?.message ?? "") ? "That email is already registered. Try signing in." : (error?.message ?? "Couldn't create the account."));
+    // With "Confirm email" off in Supabase, the user is signed in already: create the shop now.
+    if (!data.session) return { verifyEmail: form.email };
+    await createShop(data.user.id, signup);
+    return { session: await requireSession(sb) };
+  },
+
+  verifySignUp: async ({ sb }, { email, code }) => {
+    const token = code.replace(/\D/g, "");
+    if (token.length < 6) throw new Error("Enter the code from the email.");
+    const { data, error } = await sb.auth.verifyOtp({ email: email.trim().toLowerCase(), token, type: "signup" });
+    if (error || !data.user) throw new Error("That code is wrong or has expired. Check the email, or send a new code.");
+    const signup = (data.user.user_metadata as { signup?: PendingShop }).signup;
+    if (!signup) throw new Error("This sign-up has no shop details. Start again.");
+    await createShop(data.user.id, signup);
     return requireSession(sb);
   },
+
+  resendSignUpCode: async ({ sb }, { email }) => {
+    const { error } = await sb.auth.resend({ type: "signup", email: email.trim().toLowerCase() });
+    if (error) throw new Error(/rate|seconds/i.test(error.message) ? "Wait a minute before asking for another code." : error.message);
+  },
+
 
   signOut: async ({ sb }) => {
     await sb.auth.signOut();
@@ -245,6 +274,15 @@ export const serverApi: ServerApi = {
     const customer = (await shopData(ctx)).customers.find((c) => c.id === id);
     if (!customer) throw new Error("Customer not found");
     return customer;
+  },
+
+  archiveCustomer: async (ctx, id) => {
+    const { shop } = await requireSession(ctx.sb);
+    const result = await ctx.sb.from("customers").update({ archived_at: iso(ctx.now) }).eq("id", id).is("archived_at", null).select("id");
+    if (result.error?.code === "PGRST204" || result.error?.code === "42703") throw new Error("Removing customers needs the 0007 database update.");
+    check(result);
+    const waiting = check(await ctx.sb.from("calls").select("id").eq("customer_id", id).in("status", ["scheduled", "queued"])) as { id: string }[];
+    await cancelCalls(ctx.sb, shop.id, waiting.map((c) => c.id));
   },
 
   updateCustomer: async (ctx, id, patch) => {
@@ -379,9 +417,14 @@ export const serverApi: ServerApi = {
     await cancelCalls(ctx.sb, db.shop.id, batchCallsToCancel(db, id));
   },
 
-  extractKhata: async (ctx, { source, photo }) => {
+  extractKhata: async (ctx, { source, photo, lines }) => {
     const db = await shopData(ctx);
     if (source === "sample") return readSamplePage(db, ctx.now);
+    if (source === "manual" || source === "file") {
+      const given = fromInputLines(Array.isArray(lines) ? lines.slice(0, 500) : [], ctx.now);
+      if (given.length === 0) throw new Error("Add at least one line with a name and an amount.");
+      return { scanId: crypto.randomUUID(), source, rows: toRows(db, given) };
+    }
     if (!(photo instanceof Blob) || photo.size === 0) throw new Error("Choose a photo of the khata page.");
     if (photo.size > MAX_PHOTO_BYTES) throw new Error("That photo is too large. Try again with a smaller one.");
     if (!geminiConfigured()) throw new Error("Reading photos isn't set up yet (GEMINI_API_KEY).");
@@ -390,15 +433,15 @@ export const serverApi: ServerApi = {
     // Kept in the shop's private folder, as evidence if an entry is disputed later.
     const stored = await ctx.sb.storage.from("khata-photos").upload(photoPath(db.shop.id, scanId), bytes, { contentType: photo.type || "image/jpeg" });
     if (stored.error) console.error("[khata] photo not stored:", stored.error.message);
-    let lines;
+    let read;
     try {
-      lines = await readKhataPhoto(bytes, photo.type || "image/jpeg", toDateKey(ctx.now));
+      read = await readKhataPhoto(bytes, photo.type || "image/jpeg", toDateKey(ctx.now));
     } catch (err) {
       console.error("[khata] read failed:", err instanceof Error ? err.message : err);
       throw new Error("Couldn't read that photo. Try again in good light, with the whole page in the frame.");
     }
-    if (lines.length === 0) throw new Error("No entries found on that page. Try a clearer photo.");
-    return { scanId, source: "upload", rows: toRows(db, fromReadLines(lines, ctx.now)) };
+    if (read.length === 0) throw new Error("No entries found on that page. Try a clearer photo.");
+    return { scanId, source: "upload", rows: toRows(db, fromReadLines(read, ctx.now)) };
   },
 
   saveKhata: async (ctx, { scanId, source, rows }) => {

@@ -24,7 +24,6 @@ type SeedCustomer = {
   persona: Persona;
   entries: [amount: number, items: string, daysAgo: number][];
   payments?: [amount: number, method: Payment["method"], daysAgo: number][];
-  paysThroughId?: string;
 };
 
 const CUSTOMERS: SeedCustomer[] = [
@@ -51,7 +50,7 @@ const CUSTOMERS: SeedCustomer[] = [
     entries: [[310, "Groceries", 13]] },
   { id: "c11", name: "Sourav Paul", nameNative: "সৌরভ পাল", language: "bn", persona: "wrong_number",
     entries: [[75, "Cold drink, chips", 7]] },
-  { id: "c12", name: "Rina Halder", nameNative: "রিনা হালদার", language: "bn", persona: "family_mother", paysThroughId: "c15",
+  { id: "c12", name: "Rina Halder", nameNative: "রিনা হালদার", language: "bn", persona: "family_mother",
     entries: [[700, "Groceries", 20], [350, "Rice 5 kg", 9]] },
   { id: "c13", name: "Deepak Kumar", nameNative: "दीपक कुमार", language: "hi", persona: "repeat_breaker",
     entries: [[1500, "Groceries (month)", 40], [900, "Atta 10 kg, oil", 28]] },
@@ -105,7 +104,6 @@ export function createSeed(now: Date = new Date()): DemoShop {
     phone: phoneFor(i + 1),
     language: c.language,
     optedOut: false,
-    paysThroughId: c.paysThroughId,
     createdAt: created,
   }));
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createSeed } from "@/lib/demo/seed";
 import type { ShopData } from "./data";
-import { fromReadLines, readSamplePage } from "./khata";
+import { fromInputLines, fromReadLines, readSamplePage, toRows } from "./khata";
 
 const NOW = new Date("2026-10-21T11:00:00");
 const fresh = (): ShopData => ({ ...createSeed(NOW), imports: [], lines: { lines: 2, onLine: [], waiting: [] } });
@@ -56,5 +56,20 @@ describe("photo lines", () => {
   it("keeps a crossed-out amount only when it differs", () => {
     expect(fromReadLines([{ ...line, date: "2026-10-19", struck_amount: 80 }], NOW)[0].struckAmount).toBe(80);
     expect(fromReadLines([{ ...line, date: "2026-10-19", struck_amount: 95 }], NOW)[0].struckAmount).toBeUndefined();
+  });
+});
+
+describe("typed and spreadsheet lines", () => {
+  it("are fully confident, keep a new customer's number and drop lines without an amount", () => {
+    const lines = fromInputLines(
+      [
+        { name: " Bina Di ", amount: 80.4, items: "soap", date: "2099-01-01", phone: "9876543210" },
+        { name: "Nobody", amount: 0, items: "", date: "" },
+      ],
+      NOW,
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ name: "Bina Di", amount: 80, date: "2026-10-21", confidence: { name: 1, amount: 1, date: 1, items: 1 } });
+    expect(toRows(fresh(), lines)[0]).toMatchObject({ phone: "9876543210", action: "add" });
   });
 });

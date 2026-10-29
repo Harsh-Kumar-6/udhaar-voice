@@ -65,7 +65,7 @@ type CustomerRow = {
   phone: string | null;
   language: Language;
   opted_out_at: string | null;
-  pays_through_id: string | null;
+  archived_at?: string | null;
   created_at: string;
 };
 type EntryRow = {
@@ -107,6 +107,7 @@ export type CallRow = {
   ended_at: string | null;
   duration_sec: number | null;
   cost_usd: number | string | null;
+  recording_url?: string | null;
   transcript: Call["transcript"] | null;
   extraction: Call["extraction"] | null;
   created_at: string;
@@ -154,7 +155,6 @@ const toCustomer = (r: CustomerRow): Customer => ({
   phone: r.phone ?? "",
   language: r.language,
   optedOut: r.opted_out_at !== null,
-  paysThroughId: opt(r.pays_through_id),
   createdAt: r.created_at,
 });
 
@@ -228,6 +228,7 @@ export function toCall(r: CallRow, events: CallEvent[]): Call {
     endedAt: opt(r.ended_at),
     durationSec: opt(r.duration_sec),
     costUsd: r.cost_usd === null ? undefined : Number(r.cost_usd),
+    recordingUrl: opt(r.recording_url ?? null),
     transcript: r.transcript ?? [],
     extraction: opt(r.extraction),
     events,
@@ -296,6 +297,19 @@ export async function loadLines(admin: SupabaseClient, lines: number): Promise<S
   };
 }
 
+/**
+ * Archived (removed) customers stay in the database for history, out of every list and total,
+ * along with their rows. Their calls stay in call history, so calls aren't passed here.
+ */
+export function withoutArchived<C extends { id: string; archived_at?: string | null }, T extends Record<string, { customer_id: string }[]>>(
+  customers: C[],
+  rows: T,
+) {
+  const active = new Set(customers.filter((c) => !c.archived_at).map((c) => c.id));
+  const kept = Object.fromEntries(Object.entries(rows).map(([k, list]) => [k, list.filter((r) => active.has(r.customer_id))])) as T;
+  return { ...kept, customers: customers.filter((c) => active.has(c.id)) };
+}
+
 export async function loadShopData(sb: SupabaseClient, shop: Shop, lines: ShopData["lines"], now: Date): Promise<ShopData> {
   const id = shop.id;
   const table = <T>(name: string, columns = "*", order = "created_at") =>
@@ -353,14 +367,15 @@ export async function loadShopData(sb: SupabaseClient, shop: Shop, lines: ShopDa
       };
     });
 
+  const active = withoutArchived(customers, { entries, payments, promises, disputes, notes });
   return {
     shop,
-    customers: customers.map(toCustomer),
-    entries: entries.filter((e) => !e.voided_at).map(toEntry),
-    payments: payments.filter((p) => !p.voided_at).map(toPayment),
-    promises: toPromises(promises, now),
-    disputes: disputes.map(toDispute),
-    notes: notes.map(toNote),
+    customers: active.customers.map(toCustomer),
+    entries: active.entries.filter((e) => !e.voided_at).map(toEntry),
+    payments: active.payments.filter((p) => !p.voided_at).map(toPayment),
+    promises: toPromises(active.promises, now),
+    disputes: active.disputes.map(toDispute),
+    notes: active.notes.map(toNote),
     calls: mappedCalls,
     batches: mappedBatches,
     imports: mappedImports,

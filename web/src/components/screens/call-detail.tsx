@@ -96,7 +96,7 @@ function CallView({ d }: { d: CallDetail }) {
               ) : call.transcript.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t.common.transcript.none}</p>
               ) : (
-                <Transcript key={call.id + (justEnded ? "-live" : "")} turns={call.transcript} language={call.language} autoPlay={justEnded} />
+                <Transcript key={call.id + (justEnded ? "-live" : "")} turns={call.transcript} language={call.language} audioUrl={call.recordingUrl} autoPlay={justEnded && !call.recordingUrl} />
               )}
             </CardContent>
           </Card>
@@ -117,12 +117,16 @@ function CallView({ d }: { d: CallDetail }) {
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <AudioLines className="size-3.5" /> {c.recording}
                 </div>
-                <div className="flex h-10 items-center gap-0.5 rounded-lg bg-muted px-3" aria-hidden>
-                  {Array.from({ length: 48 }, (_, i) => (
-                    <span key={i} className="w-1 rounded-full bg-muted-foreground/30" style={{ height: `${20 + ((i * 37) % 60)}%` }} />
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">{c.recordingNote}</p>
+                {call.recordingUrl ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">{c.recordingNote}</p>
+                    <a href={call.recordingUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary underline underline-offset-2">
+                      {c.openRecording}
+                    </a>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">{c.noRecording}</p>
+                )}
               </div>
             </CardContent>
           </Card>

@@ -11,6 +11,7 @@ import {
   dialOrder,
   estimatedWaitSeconds,
   formatINR,
+  formatPhone,
   isPromiseBroken,
   isWithinCallingHours,
   maskPhone,
@@ -104,6 +105,10 @@ describe("formatting", () => {
   it("masks all but the last four digits", () => {
     expect(maskPhone("+919000000112")).toBe("+91 ••••• •0112");
   });
+  it("groups Indian mobiles as +91 98765 43210", () => {
+    expect(formatPhone("+919876543210")).toBe("+91 98765 43210");
+    expect(formatPhone("+14155550100")).toBe("+14155550100");
+  });
   it("formats local dates without UTC drift", () => {
     expect(toDateKey(at("2026-10-21T23:30:00"))).toBe("2026-10-21");
   });
@@ -128,9 +133,12 @@ describe("normalizeIndianMobile", () => {
 
 describe("upiLink", () => {
   it("builds a standard upi:// link", () => {
-    const link = upiLink({ upiId: "shop@upi", payeeName: "Maa Tara Stores", amount: 350, note: "Khata dues" });
+    const link = upiLink({ upiId: "shop@upi", payeeName: "Maa Tara Stores", amount: 350 });
     expect(link.startsWith("upi://pay?")).toBe(true);
-    expect(new URLSearchParams(link.split("?")[1]).get("am")).toBe("350");
+    const params = new URLSearchParams(link.split("?")[1]);
+    expect(params.get("am")).toBe("350");
+    // No fixed note, so the customer can write their own.
+    expect(params.has("tn")).toBe(false);
   });
 });
 

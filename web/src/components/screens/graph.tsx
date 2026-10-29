@@ -88,7 +88,6 @@ function stylesheet(c: ReturnType<typeof palette>): StylesheetJson {
     { selector: "node[type = 'product']", style: { shape: "hexagon", width: "mapData(amount, 1, 5, 22, 36)", height: "mapData(amount, 1, 5, 22, 36)", "background-color": c.callback, "font-size": 10 } },
     { selector: "node:selected", style: { "border-color": c.fg, "border-width": 3 } },
     { selector: "edge", style: { width: 1.2, "line-color": c.border, "curve-style": "bezier", "target-arrow-shape": "none" } },
-    { selector: "edge[kind = 'pays_through']", style: { "line-color": c.primary, width: 2, "line-style": "dashed", "target-arrow-shape": "triangle", "target-arrow-color": c.primary } },
     { selector: "edge[kind = 'owes']", style: { "line-color": c.border, opacity: 0.6 } },
   ];
 }

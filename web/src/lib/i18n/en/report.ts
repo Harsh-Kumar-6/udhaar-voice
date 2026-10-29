@@ -22,9 +22,5 @@ export const report = {
     description: "This is what Asha says when she calls you. You can ask follow-up questions on the call.",
     send: "Send report call now",
     sending: "Calling you…",
-    preview: "Preview with browser voice",
-    stopPreview: "Stop preview",
-    previewNote: "The preview uses your browser's voice and reads the English version. The real call uses Sarvam's Bengali voice.",
-    noVoice: "Your browser has no voice for previews.",
   },
 };

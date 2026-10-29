@@ -36,7 +36,7 @@ import { api } from "@/lib/api";
 import type { AttentionItem } from "@/lib/api/contract";
 import { attempt, useApiMutation, useDashboard, useShop } from "@/lib/api/hooks";
 import { formatINR } from "@/lib/domain/rules";
-import { useT } from "@/lib/i18n";
+import { formatLongDate, useAppLanguage, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 const ATTENTION_ICON: Record<AttentionItem["kind"], typeof CircleAlert> = {
@@ -59,6 +59,7 @@ const ATTENTION_TONE: Record<AttentionItem["kind"], string> = {
 
 export function DashboardScreen() {
   const t = useT();
+  const language = useAppLanguage();
   const d = t.dashboard;
   const shop = useShop();
   const q = useDashboard();
@@ -71,7 +72,7 @@ export function DashboardScreen() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow={format(new Date(), "EEEE d MMMM")}
+        eyebrow={formatLongDate(new Date(), language)}
         title={d.greeting(firstName)}
         description={d.description}
         actions={

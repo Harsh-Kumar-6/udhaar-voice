@@ -1,6 +1,7 @@
 /**
  * Writes Udhaar Voice's prompts, greeting, webhook and extractions onto the two Bolna agents
- * (BOLNA_REMINDER_AGENT_ID and BOLNA_REPORT_AGENT_ID). Voices and languages stay as set on Bolna.
+ * (BOLNA_REMINDER_AGENT_ID and BOLNA_REPORT_AGENT_ID). English and Hindi voices stay as set on Bolna;
+ * Bengali, Odia and Marathi are added with Sarvam voices when an agent doesn't have them yet.
  * Safe to run again after a prompt change: existing extractions are updated, not duplicated.
  *
  * Runs as `npm run bolna:setup`.
@@ -25,6 +26,16 @@ const AGENT_SETTINGS = [
 ];
 
 /**
+ * Sarvam voices for the languages the setup adds. Bolna has Odia only on bulbul:v3, whose voices
+ * speak every Indian language; Bengali and Marathi have their own conversational voices.
+ */
+const SARVAM_VOICES: Record<string, { voice: string; voice_id: string; model: string }> = {
+  bn: { voice: "Roopa (Conversational)", voice_id: "roopa_bn_conversational", model: "bulbul:v4-flash" },
+  od: { voice: "Priya", voice_id: "priya", model: "bulbul:v3" },
+  mr: { voice: "Ishita (Conversational)", voice_id: "ishita_mr_conversational", model: "bulbul:v4-flash" },
+};
+
+/**
  * A multilingual agent keeps its own prompt per language, which the main-prompt update doesn't reach.
  * Every language gets the same prompt; it already says which language to speak.
  * Each call starts in the customer's own language, so the agent switches only when the customer asks:
@@ -39,6 +50,15 @@ async function setLanguagePrompts(agentId: string, prompt: string): Promise<stri
   if (!multilingual?.languages) return [];
   const languages = multilingual.languages;
   multilingual.language_switch_trigger = "caller_requested";
+  for (const [code, voice] of Object.entries(SARVAM_VOICES)) {
+    languages[code] ??= {
+      agent_name: `${String(agent.agent_name)}-${code}`,
+      synthesizer: { stream: true, provider: "sarvam", buffer_size: 200, provider_config: { ...voice, language: code }, pronunciation_rules: null },
+      transcriber: { model: "saaras:v4", stream: true, language: code, provider: "sarvam" },
+      system_prompt: prompt,
+      handoff_message: null,
+    };
+  }
   for (const lang of Object.values(languages)) {
     lang.system_prompt = prompt;
     lang.handoff_message = null;

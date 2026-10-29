@@ -1,27 +1,30 @@
-import { setDefaultOptions } from "date-fns";
+import { format, setDefaultOptions } from "date-fns";
 import { bn as bnDates, enIN, hi as hiDates } from "date-fns/locale";
 import { useSyncExternalStore } from "react";
-import type { Language } from "@/lib/domain/types";
+import { LANGUAGES, type Language } from "@/lib/domain/types";
 import { bn } from "./bn";
 import { en } from "./en";
 import { hi } from "./hi";
+import { mr } from "./mr";
+import { or } from "./or";
 
 /**
- * All shopkeeper-facing text, in English, Bengali and Hindi. The app language is a per-device
+ * All shopkeeper-facing text, in English, Hindi, Odia, Bengali and Marathi. The app language is a per-device
  * choice (Settings), stored in this browser so it applies before sign-in too. English is the default.
  * Month and day names follow it through date-fns; digits stay 0–9, as on most Indian apps.
  */
 export type Dictionary = typeof en;
 
-const DICTIONARIES: Record<Language, Dictionary> = { en, bn, hi };
-const DATE_LOCALES = { en: enIN, bn: bnDates, hi: hiDates };
+const DICTIONARIES: Record<Language, Dictionary> = { en, hi, or, bn, mr };
+// date-fns has no Odia or Marathi month names, so those use English ones ("28 Oct").
+const DATE_LOCALES: Record<Language, typeof enIN> = { en: enIN, hi: hiDates, or: enIN, bn: bnDates, mr: enIN };
 const STORAGE_KEY = "udhaar-voice-language";
 const listeners = new Set<() => void>();
 
 function stored(): Language {
   try {
     const value = window.localStorage.getItem(STORAGE_KEY);
-    if (value === "bn" || value === "hi" || value === "en") return value;
+    if (LANGUAGES.includes(value as Language)) return value as Language;
   } catch {
     // Blocked storage: fall back to English.
   }
@@ -63,6 +66,11 @@ export function setAppLanguage(language: Language) {
   }
   apply(language);
   for (const listener of listeners) listener();
+}
+
+/** A long date in the app's language: "Wednesday, 28th October" in English, the usual style elsewhere. */
+export function formatLongDate(date: Date, language: Language): string {
+  return format(date, language === "en" ? "EEEE, do MMMM" : "EEEE d MMMM");
 }
 
 export function useT(): Dictionary {

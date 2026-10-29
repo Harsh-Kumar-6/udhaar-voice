@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   CallStatusPill,
-  CustomerName,
   EmptyState,
   ErrorBlock,
   LanguageTag,
@@ -14,6 +13,7 @@ import {
   Money,
   OutcomeBadge,
   PageHeader,
+  PhoneNumber,
   StatusChip,
   TimeAgo,
 } from "@/components/app/bits";
@@ -133,7 +133,10 @@ function CustomerRow({ s }: { s: CustomerSummary }) {
       >
         <span className="flex min-w-0 items-center gap-3">
           <Initial name={customer.name} status={s.status} />
-          <CustomerName name={customer.name} nativeName={customer.nameNative} language={customer.language} />
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate font-medium">{customer.name}</span>
+            {customer.phone ? <PhoneNumber phone={customer.phone} className="truncate text-xs" /> : null}
+          </span>
           <LanguageTag language={customer.language} />
         </span>
         <Money amount={s.balance} className={cn("text-right font-semibold", s.balance === 0 && "text-muted-foreground")} />

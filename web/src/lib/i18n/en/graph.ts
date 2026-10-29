@@ -20,5 +20,5 @@ export const graph = {
   openCustomer: "Open customer",
   owes: "Owes",
   asked: (n: number) => `Asked by ${n} ${n === 1 ? "customer" : "customers"}`,
-  edgeKinds: { owes: "owes", promised: "promised", disputed: "disputed", said: "said", asked_for: "asked for", pays_through: "pays through" },
+  edgeKinds: { owes: "owes", promised: "promised", disputed: "disputed", said: "said", asked_for: "asked for" },
 };

@@ -9,8 +9,8 @@
   and one semantic colour per customer state (due, overdue, promised, disputed, paid, callback).
 */
 @theme inline {
-  --font-sans: var(--font-hanken), var(--font-noto-bengali), var(--font-noto-devanagari), ui-sans-serif, system-ui, sans-serif;
-  --font-heading: var(--font-bricolage), var(--font-hanken), var(--font-noto-bengali), var(--font-noto-devanagari), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-hanken), var(--font-noto-bengali), var(--font-noto-devanagari), var(--font-noto-odia), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-bricolage), var(--font-hanken), var(--font-noto-bengali), var(--font-noto-devanagari), var(--font-noto-odia), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --color-background: var(--background);

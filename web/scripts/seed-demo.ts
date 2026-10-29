@@ -86,9 +86,6 @@ async function main() {
       })),
     ),
   );
-  for (const c of seed.customers.filter((x) => x.paysThroughId)) {
-    await run("pays through", admin.from("customers").update({ pays_through_id: id(c.paysThroughId!) }).eq("id", id(c.id)));
-  }
 
   await run(
     "entries",

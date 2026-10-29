@@ -41,8 +41,6 @@ export type CustomerDetail = CustomerSummary & {
   calls: Call[];
   /** What the agent will be told at the start of the next call. */
   memory: string;
-  paysThrough?: Customer;
-  paysFor: Customer[];
 };
 
 /**
@@ -104,7 +102,7 @@ export type DailyReport = {
   callsAnswered: number;
   productRequests: { customer: Customer; note: Note }[];
   /** The spoken summary the evening call reads out, in each language. */
-  spoken: { bn: string; en: string; hi: string };
+  spoken: Record<Language, string>;
 };
 
 export type GraphNodeType = "shop" | "customer" | "promise" | "dispute" | "note" | "product";
@@ -119,7 +117,7 @@ export type GraphNode = {
   customerId?: string;
   detail?: string;
 };
-export type GraphEdgeKind = "owes" | "promised" | "disputed" | "said" | "asked_for" | "pays_through";
+export type GraphEdgeKind = "owes" | "promised" | "disputed" | "said" | "asked_for";
 export type GraphEdge = { id: string; source: string; target: string; kind: GraphEdgeKind };
 export type GraphData = { nodes: GraphNode[]; edges: GraphEdge[] };
 
@@ -146,7 +144,11 @@ export type KhataRow = {
   /** What saving does with the row: add a new entry, update `saved`, or nothing. */
   action: KhataRowAction;
 };
-export type KhataExtraction = { scanId: string; source: "sample" | "upload"; rows: KhataRow[] };
+/** Where an import came from: a photo, the sample page, typed lines or a spreadsheet. */
+export type KhataSource = "sample" | "upload" | "manual" | "file";
+export type KhataExtraction = { scanId: string; source: KhataSource; rows: KhataRow[] };
+/** One khata line typed in or read from a spreadsheet. `date` is YYYY-MM-DD. */
+export type KhataLineInput = { name: string; nameNative?: string; amount: number; items: string; date: string; phone?: string };
 export type KhataSaveResult = { importId: string; added: number; updated: number; newCustomers: number };
 export type KhataImportSummary = { import: KhataImport; added: number; updated: number; amount: number };
 export type KhataUndoResult = { removed: number; restored: number; customersRemoved: number };
@@ -208,6 +210,9 @@ export type Session = { user: User; shop: Shop };
 
 /** The identifier is either a 10-digit Indian mobile or an email address. */
 export type SignInInput = { identifier: string; password: string };
+/** Signed in straight away, or a code was emailed to `verifyEmail` (when Supabase confirms emails). */
+export type SignUpResult = { session: Session } | { verifyEmail: string };
+
 export type SignUpInput = {
   phone: string;
   /** Required: accounts sign in by email underneath, even when the shopkeeper types their phone. */
@@ -236,7 +241,10 @@ export interface UdhaarApi {
   /** Throws on invalid credentials. */
   signIn(input: SignInInput): Promise<Session>;
   /** Throws if the phone or email is already registered or validation fails. */
-  signUp(input: SignUpInput): Promise<Session>;
+  signUp(input: SignUpInput): Promise<SignUpResult>;
+  /** Finishes a sign-up with the code emailed to the shopkeeper. Throws if the code is wrong or expired. */
+  verifySignUp(input: { email: string; code: string }): Promise<Session>;
+  resendSignUpCode(input: { email: string }): Promise<void>;
   signOut(): Promise<void>;
   /** Throws if validation fails or the phone or email belongs to another account. */
   updateProfile(input: ProfileInput): Promise<Session>;
@@ -251,6 +259,8 @@ export interface UdhaarApi {
   getCustomer(id: string): Promise<CustomerDetail | null>;
   /** Throws if another customer already has the phone number. */
   addCustomer(input: { name: string; nameNative?: string; phone?: string; language: Language }): Promise<Customer>;
+  /** Removes a customer from the khata: archived, so their history stays, and their waiting calls are cancelled. */
+  archiveCustomer(id: string): Promise<void>;
   updateCustomer(id: string, patch: Partial<Pick<Customer, "name" | "nameNative" | "phone" | "language" | "optedOut">>): Promise<Customer>;
   addEntry(input: { customerId: string; amount: number; items: string; date: string; source: LedgerEntry["source"] }): Promise<LedgerEntry>;
   recordPayment(input: { customerId: string; amount: number; method: Payment["method"]; date: string }): Promise<Payment>;
@@ -275,8 +285,11 @@ export interface UdhaarApi {
   rescheduleBatch(id: string, at: string, bypassHours: boolean): Promise<RescheduleBatchResult>;
   cancelBatch(id: string): Promise<void>;
 
-  /** "upload" reads `photo` (a JPEG or PNG under 4 MB); "sample" reads the drawn sample page. */
-  extractKhata(input: { source: "sample" | "upload"; photo?: Blob }): Promise<KhataExtraction>;
+  /**
+   * "upload" reads `photo` (a JPEG or PNG under 4 MB); "sample" reads the drawn sample page;
+   * "manual" and "file" take `lines` typed in or read from a spreadsheet.
+   */
+  extractKhata(input: { source: KhataSource; photo?: Blob; lines?: KhataLineInput[] }): Promise<KhataExtraction>;
   saveKhata(input: { scanId: string; source: KhataExtraction["source"]; rows: KhataRow[] }): Promise<KhataSaveResult>;
   /** Recent photo imports, newest first. */
   listKhataImports(): Promise<KhataImportSummary[]>;

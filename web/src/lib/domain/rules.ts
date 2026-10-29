@@ -159,6 +159,13 @@ export function maskPhone(e164: string): string {
   return `${cc}••••• •${last4.slice(-4)}`;
 }
 
+/** +91 98765 43210: a number as people read it. Not masked; it's the shopkeeper's own customer list. */
+export function formatPhone(e164: string): string {
+  const digits = e164.replace(/\D/g, "");
+  if (digits.length === 12 && digits.startsWith("91")) return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`;
+  return e164;
+}
+
 /** Accepts 10-digit Indian mobiles with or without +91 / 0; returns E.164 or null. */
 export function normalizeIndianMobile(input: string): string | null {
   const digits = input.replace(/\D/g, "");
@@ -166,11 +173,17 @@ export function normalizeIndianMobile(input: string): string | null {
   return /^[6-9]\d{9}$/.test(local) ? `+91${local}` : null;
 }
 
-const SCRIPTS: Record<Language, RegExp> = { bn: /[\u0980-\u09FF]/, hi: /[\u0900-\u097F]/, en: /^[\x20-\x7E]+$/ };
+const SCRIPTS: Record<Language, RegExp> = {
+  en: /^[\x20-\x7E]+$/,
+  hi: /[\u0900-\u097F]/,
+  or: /[\u0B00-\u0B7F]/,
+  bn: /[\u0980-\u09FF]/,
+  mr: /[\u0900-\u097F]/,
+};
 
 /**
  * The name to say on a call in `language`: the khata's native-script name when it is written in that
- * language's script (Bengali for bn, Devanagari for hi), otherwise the Latin name. A Bengali-script name
+ * language's script (Bengali for bn, Devanagari for hi and mr, Odia for or), otherwise the Latin name. A Bengali-script name
  * read out in a Hindi call comes out wrong.
  */
 export function spokenName(c: { name: string; nameNative?: string }, language: Language): string {
@@ -185,8 +198,9 @@ export function confidenceLabel(c: number): "High" | "Medium" | "Low" {
 }
 
 /** UPI deep link that any UPI app understands. */
-export function upiLink(input: { upiId: string; payeeName: string; amount: number; note: string }): string {
-  const params = new URLSearchParams({ pa: input.upiId, pn: input.payeeName, am: String(input.amount), cu: "INR", tn: input.note });
+/** No fixed note (`tn`), so customers can write their own when they pay. */
+export function upiLink(input: { upiId: string; payeeName: string; amount: number }): string {
+  const params = new URLSearchParams({ pa: input.upiId, pn: input.payeeName, am: String(input.amount), cu: "INR" });
   return `upi://pay?${params.toString()}`;
 }
 

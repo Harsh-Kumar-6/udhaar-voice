@@ -1,7 +1,8 @@
 "use client";
 
 import { formatDistanceToNowStrict, parseISO } from "date-fns";
-import { Camera, CheckCircle2, FileImage, Loader2, PhoneCall, RotateCcw, Undo2 } from "lucide-react";
+import { Camera, CheckCircle2, FileImage, FileSpreadsheet, ImageUp, Keyboard, Loader2, PhoneCall, RotateCcw, Undo2 } from "lucide-react";
+import { readSheet } from "read-excel-file/browser";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -15,16 +16,19 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { shrinkPhoto } from "@/lib/image";
-import type { KhataExtraction, KhataRow, KhataRowAction, KhataSaveResult } from "@/lib/api/contract";
+import type { KhataExtraction, KhataLineInput, KhataRow, KhataRowAction, KhataSaveResult, KhataSource } from "@/lib/api/contract";
+import { parseCsv, rowsToLines } from "@/lib/khata-file";
+import { CameraDialog } from "@/components/app/camera-dialog";
+import { ManualEntryDialog } from "@/components/app/manual-entry-dialog";
 import { attempt, useApiMutation, useCustomers, useKhataImports } from "@/lib/api/hooks";
-import { formatINR, normalizeIndianMobile } from "@/lib/domain/rules";
+import { formatINR, normalizeIndianMobile, toDateKey } from "@/lib/domain/rules";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 type Stage =
   | { kind: "start" }
-  | { kind: "reading"; source: "sample" | "upload"; imageUrl?: string }
-  | { kind: "review"; source: "sample" | "upload"; imageUrl?: string; scan: KhataExtraction }
+  | { kind: "reading"; source: KhataSource; imageUrl?: string }
+  | { kind: "review"; source: KhataSource; imageUrl?: string; scan: KhataExtraction }
   | ({ kind: "saved"; withoutPhone: number } & KhataSaveResult);
 
 const LOW = 0.8;
@@ -32,18 +36,24 @@ const LOW = 0.8;
 export function KhataScreen() {
   const t = useT().khata;
   const [stage, setStage] = useState<Stage>({ kind: "start" });
-  const fileInput = useRef<HTMLInputElement>(null);
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const sheetInput = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  // Read when the shopkeeper starts typing entries: the clock can't be read during prerender.
+  const [today, setToday] = useState("");
   const imageUrl = stage.kind === "reading" || stage.kind === "review" ? stage.imageUrl : undefined;
 
   // Free the photo preview when it is no longer shown.
   useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
 
-  const read = async (source: "sample" | "upload", file?: File) => {
+  const read = async (source: KhataSource, file?: File, lines?: KhataLineInput[]) => {
     const url = file ? URL.createObjectURL(file) : undefined;
     setStage({ kind: "reading", source, imageUrl: url });
     try {
       const photo = file ? await shrinkPhoto(file).catch(() => file) : undefined;
-      const scan = await api.extractKhata({ source, photo });
+      const scan = await api.extractKhata({ source, photo, lines });
       setStage({ kind: "review", source, imageUrl: url, scan });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -51,32 +61,74 @@ export function KhataScreen() {
     }
   };
 
+  // Phones open their camera from the file picker; laptops and tablets get the camera in a dialog.
+  const takePhoto = () => {
+    if (window.matchMedia("(pointer: coarse)").matches) cameraInput.current?.click();
+    else setCameraOpen(true);
+  };
+
+  const importSheet = async (file: File) => {
+    try {
+      const rows: unknown[][] = /\.csv$/i.test(file.name) || file.type === "text/csv" ? parseCsv(await file.text()) : await readSheet(file);
+      const { lines, skipped } = rowsToLines(rows, toDateKey(new Date()));
+      if (lines.length === 0) return void toast.error(t.start.fileEmpty);
+      if (skipped) toast.message(t.start.fileSkipped(skipped));
+      void read("file", undefined, lines);
+    } catch {
+      toast.error(t.start.fileError);
+    }
+  };
+
+  const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) void read("upload", file);
+    e.target.value = "";
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title={t.title} description={t.description} />
+      <CameraDialog open={cameraOpen} onOpenChange={setCameraOpen} onPhoto={(file) => void read("upload", file)} />
+      {today ? <ManualEntryDialog open={manualOpen} onOpenChange={setManualOpen} today={today} onLines={(lines) => void read("manual", undefined, lines)} /> : null}
 
       {stage.kind === "start" ? (
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <CardContent className="space-y-5">
               <div className="grid gap-3">
-                <Button size="lg" className="h-14 text-base" onClick={() => fileInput.current?.click()}>
-                  <Camera className="size-5" /> {t.start.takePhoto}
-                </Button>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Button size="lg" className="h-14 text-base" onClick={takePhoto}>
+                    <Camera className="size-5" /> {t.start.takePhoto}
+                  </Button>
+                  <Button size="lg" variant="outline" className="h-14 text-base" onClick={() => photoInput.current?.click()}>
+                    <ImageUp className="size-5" /> {t.start.uploadPhoto}
+                  </Button>
+                  <Button size="lg" variant="outline" className="h-14 text-base" onClick={() => {
+                    setToday(toDateKey(new Date()));
+                    setManualOpen(true);
+                  }}>
+                    <Keyboard className="size-5" /> {t.start.typeEntries}
+                  </Button>
+                  <Button size="lg" variant="outline" className="h-14 text-base" onClick={() => sheetInput.current?.click()}>
+                    <FileSpreadsheet className="size-5" /> {t.start.importFile}
+                  </Button>
+                </div>
+                <input ref={cameraInput} id="khata-camera" type="file" accept="image/*" capture="environment" className="sr-only" onChange={onPhoto} />
+                <input ref={photoInput} id="khata-photo" type="file" accept="image/*" className="sr-only" onChange={onPhoto} />
                 <input
-                  ref={fileInput}
-                  id="khata-photo"
+                  ref={sheetInput}
+                  id="khata-sheet"
                   type="file"
-                  accept="image/*"
-                  capture="environment"
+                  accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   className="sr-only"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file) void read("upload", file);
+                    if (file) void importSheet(file);
                     e.target.value = "";
                   }}
                 />
-                <Button size="lg" variant="outline" className="h-14 text-base" onClick={() => void read("sample")}>
+                <p className="text-xs text-muted-foreground">{t.start.fileHint}</p>
+                <Button size="lg" variant="ghost" className="h-12 text-base" onClick={() => void read("sample")}>
                   <FileImage className="size-5" /> {t.start.sample}
                 </Button>
               </div>
@@ -179,6 +231,8 @@ function Review({
   onSaved: (r: KhataSaveResult & { withoutPhone: number }) => void;
 }) {
   const t = useT().khata.review;
+  // Typed and spreadsheet lines have no page to show beside them.
+  const typed = scan.source === "manual" || scan.source === "file";
   const customers = useCustomers();
   const save = useApiMutation(api.saveKhata);
   const [rows, setRows] = useState<KhataRow[]>(scan.rows);
@@ -202,8 +256,8 @@ function Review({
   };
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-      <PagePreview imageUrl={imageUrl} />
+    <div className={cn("grid gap-6", typed ? "" : "xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]")}>
+      {typed ? null : <PagePreview imageUrl={imageUrl} />}
       <Card>
         <CardHeader>
           <CardTitle>{t.title}</CardTitle>

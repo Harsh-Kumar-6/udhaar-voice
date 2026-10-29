@@ -2,9 +2,7 @@ import type { CallOutcome, CallStatus, CustomerStatus, Language, NoteKind } from
 
 export const common = {
   appName: "Udhaar Voice",
-  prototype: {
-    masked: "Numbers are masked for privacy",
-  },
+  password: { show: "Show password", hide: "Hide password" },
   status: {
     due: "Due",
     overdue: "Overdue",
@@ -35,8 +33,8 @@ export const common = {
     no_answer: "No answer",
     report_delivered: "Report delivered",
   } satisfies Record<CallOutcome, string>,
-  language: { bn: "Bengali", hi: "Hindi", en: "English" } satisfies Record<Language, string>,
-  languageShort: { bn: "BN", hi: "HI", en: "EN" } satisfies Record<Language, string>,
+  language: { en: "English", hi: "Hindi", or: "Odia", bn: "Bengali", mr: "Marathi" } satisfies Record<Language, string>,
+  languageShort: { en: "EN", hi: "HI", or: "OR", bn: "BN", mr: "MR" } satisfies Record<Language, string>,
   noteKind: {
     request: "Request",
     complaint: "Complaint",

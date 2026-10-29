@@ -1,6 +1,6 @@
 # Udhaar Voice
 
-Photograph a shop's credit ledger (khata). Udhaar Voice calls each customer in Bengali or Hindi, records promises to pay, and lets the shopkeeper ask the khata anything by voice. Built for the Bolna Buildathon 2026.
+Photograph a shop's credit ledger (khata). Udhaar Voice calls each customer in their own language (English, Hindi, Odia, Bengali or Marathi), records promises to pay, and lets the shopkeeper ask the khata anything by voice. Built for the Bolna Buildathon 2026.
 
 **Status:** the app runs on Supabase (Postgres and Auth). Real calls (Bolna) and photo reading and voice questions (vision and speech models) are not connected yet.
 
@@ -39,7 +39,7 @@ bolna/
 │     ├─ lib/api/             The API contract every screen uses, and its browser client
 │     ├─ lib/server/          The API on Supabase: loading a shop's rows, queries, scheduling, validation
 │     ├─ lib/demo/            The demo shop, scripted conversations, the sample khata page
-│     └─ lib/i18n/            All shopkeeper-facing text: English (en/), Bengali (bn.ts), Hindi (hi.ts)
+│     └─ lib/i18n/            All shopkeeper-facing text: English (en/), Hindi (hi.ts), Odia (or.ts), Bengali (bn.ts), Marathi (mr.ts)
 ```
 
 ## The screens
@@ -49,36 +49,37 @@ bolna/
 | `/` | Landing page |
 | `/try` | Public demo: a visitor gets a scripted reminder call (one per number per day, 20 a day in all) |
 | `/app` | Dashboard: pending, promised, collected, what needs attention |
-| `/app/customers`, `/app/customers/[id]` | Customer list and page (memory, promises, disputes, khata, calls) |
-| `/app/khata` | Snap khata: photo → entries → review (crossed-out values, repeats, changes) → save; undo a whole import |
+| `/app/customers`, `/app/customers/[id]` | Customer list and page (memory, promises, disputes, khata, calls, call recordings, UPI QR code; rename or remove a customer) |
+| `/app/khata` | Snap khata: take or upload a photo, type entries, or import a CSV/Excel sheet → entries → review (crossed-out values, repeats, changes) → save; undo a whole import |
 | `/app/calls`, `/app/calls/[id]` | Calls: schedule reminder batches (change a batch's time before it starts, remove anyone not yet called), watch them run, call history, and the call screen (live state, transcript, extraction, event log). `/app/reminders` redirects here. |
 | `/app/ask` | Ask your khata (shows the tool the assistant called) |
 | `/app/report` | Today's report and the evening call |
 | `/app/graph` | Knowledge graph |
 | `/app/profile` | Your details, shop and UPI ID (from the avatar menu: sidebar bottom on desktop, header top-right on phones) |
-| `/app/settings` | How the app works: app language, calling rules, language for new customers, evening voice summary, demo controls |
+| `/app/settings` | How the app works, saved as it changes: app language, calling rules, language for new customers, evening voice summary, demo controls |
 
 ## What's connected
 
 | Part | How |
 |---|---|
-| Accounts and data | Supabase Auth (phone or email with a password); every shop's data in Postgres, private to its owner by row-level security |
-| Calls | Bolna reminder and evening summary agents in Bengali, Hindi and English; results written into promises, disputes, notes and opt-outs |
+| Accounts and data | Supabase Auth (phone or email with a password; a new account confirms its email with a code); every shop's data in Postgres, private to its owner by row-level security |
+| Calls | Bolna reminder and evening summary agents in English, Hindi, Odia, Bengali and Marathi; results written into promises, disputes, notes and opt-outs |
 | Khata photos | Gemini reads each page into rows with a confidence per field and crossed-out amounts; the photo is kept in private storage |
 | Ask your khata | Gemini answers by calling tools on the shop's data, in the language asked; voice questions are transcribed by Gemini. Without a Gemini key, keyword answers |
 | `/try` | A real Bolna call when `TRY_REAL_CALLS` is on (a Bolna trial only reaches verified numbers), otherwise a scripted conversation |
 
 ## Calls
 
-- **Agents:** two Bolna agents, Reminder and Evening summary. Their voices and languages are set on Bolna; `npm run bolna:setup` writes the prompts (`lib/server/bolna/prompts.ts`), greeting, webhook and extractions onto them. Each call fills the prompt from `user_data`: the customer's name, amount due, what they bought, memory from earlier calls and any open dispute.
+- **Agents:** two Bolna agents, Reminder and Evening summary. English and Hindi voices are set on Bolna; `npm run bolna:setup` adds Bengali, Odia and Marathi Sarvam voices when missing and writes the prompts (`lib/server/bolna/prompts.ts`), greeting, webhook and extractions onto them. Each call fills the prompt from `user_data`: the customer's name, amount due, what they bought, memory from earlier calls and any open dispute.
 - **Dispatcher** (`lib/server/dispatcher.ts`): every minute (Supabase cron, `0005_scheduler.sql`) and right after a call is scheduled for now. It creates evening summary calls at each shop's time, queues due calls, and dials them while lines are free, taking turns between shops and only inside calling hours. A call is claimed before it's dialled, so it's never dialled twice.
 - **Results:** Bolna's webhook (`/api/bolna/webhook`) and the dispatcher's check of calls on a line both read the call back from Bolna's API, then write the status, transcript, cost and the extracted outcome, promise, dispute, notes and opt-out (`lib/server/call-results.ts`). A finished call's result is written once.
 
 ## Corrections and accounts
 
-- **Customers** can be added by hand on the Customers page, as well as from khata photos.
+- **Customers** can be added by hand on the Customers page, as well as from khata photos. They can be renamed, or removed: a removed customer leaves the lists and their waiting calls are cancelled, but past calls stay (needs `0007`).
 - **Entries and payments** can be corrected or deleted from a customer's page. A deleted one is voided, not erased, so the history stays (deleting payments needs `0006`).
 - **Passwords** can be changed from Profile, after checking the current one.
+- **Sign-up** sends a code to the email when Supabase's "Confirm email" is on; the shop is created once the code is entered.
 - **Sign-in limits** (`lib/server/limits.ts`, `0006`): after 5 failed sign-ins for one phone or email, or 20 from one network address, within 15 minutes, sign-in pauses; one network can create at most 10 accounts in 15 minutes.
 - **Phones:** the app can be added to the home screen (`app/manifest.ts`, icons in `public/icons`), opening straight into the khata.
 
@@ -88,6 +89,7 @@ bolna/
 
 ## Reading and understanding
 
+- **Typed entries and spreadsheets** (`lib/khata-file.ts`): CSV and Excel files are read in the browser; columns are found by their header in English, Hindi or Bengali, or taken in the order name, amount, items, date, phone. They go through the same review as a photo.
 - **Khata photos** (`lib/server/gemini.ts`, `khata.ts`): the photo is shrunk in the browser, stored in `khata-photos/{shop}/{scan}.jpg`, and read by Gemini against a JSON schema. Rows are then matched to customers and saved entries exactly like the sample page.
 - **Ask** (`lib/server/ask.ts`): Gemini gets tools over the shop's data (summary, a customer, promises by range, top dues, disputes, missed promises, collections, product requests, scheduling a call) and answers in the question's language. The keyword assistant answers when Gemini isn't set up or fails.
 - **Voice questions:** Gemini transcribes the recording in its own script before it is asked.

@@ -465,7 +465,7 @@ export function buildReportScript(input: {
   dueTomorrow: (ReportPerson & { amount: number })[];
   disputes: (ReportPerson & { reason: string })[];
   productRequests: string[];
-}): { turns: Turn[]; spokenBn: string; spokenEn: string; spokenHi: string } {
+}): { turns: Turn[]; spoken: Record<Language, string> } {
   const promised = input.promisesMade.length;
   const promisedTotal = input.promisesMade.reduce((s, p) => s + p.amount, 0);
   // What Asha says in Hindi, line for line with the agent's lines below. Names stay in Latin letters.
@@ -478,6 +478,32 @@ export function buildReportScript(input: {
   if (input.dueTomorrow.length) hi.push(`कल ${input.dueTomorrow.map((d) => `${d.name} (${hiNum(d.amount)} रुपये)`).join(", ")} से पैसे आने हैं।`);
   if (input.disputes.length) hi.push(`${hiNum(input.disputes.length)} विवाद देखने हैं: ${input.disputes.map((d) => d.name).join(", ")}।`);
   if (input.productRequests.length) hi.push(`ग्राहकों ने माँगा: ${input.productRequests.join(", ")}।`);
+  // The same in Odia and Marathi.
+  const or: string[] = [
+    `ନମସ୍କାର ${input.ownerFirstName}, ମୁଁ ଆଶା। ଆଜିର ହିସାବ ଶୁଣାଉଛି।`,
+    promised
+      ? `ଆଜି ${hiNum(input.collected)} ଟଙ୍କା ଜମା ହେଲା। ${hiNum(promised)} ଜଣ ମୋଟ ${hiNum(promisedTotal)} ଟଙ୍କା ଦେବାକୁ କଥା ଦେଇଛନ୍ତି।`
+      : `ଆଜି ${hiNum(input.collected)} ଟଙ୍କା ଜମା ହେଲା। ଆଜି କେହି ନୂଆ କଥା ଦେଇନାହାଁନ୍ତି।`,
+  ];
+  const mr: string[] = [
+    `नमस्कार ${input.ownerFirstName}, मी आशा. आजचा हिशोब सांगते.`,
+    promised
+      ? `आज ${hiNum(input.collected)} रुपये जमा झाले. ${hiNum(promised)} ${promised === 1 ? "ग्राहकाने" : "ग्राहकांनी"} एकूण ${hiNum(promisedTotal)} रुपये देण्याचे वचन दिले.`
+      : `आज ${hiNum(input.collected)} रुपये जमा झाले. आज कोणीही नवीन वचन दिले नाही.`,
+  ];
+  const names = (xs: { name: string }[]) => xs.map((x) => x.name).join(", ");
+  if (input.dueTomorrow.length) {
+    or.push(`କାଲି ${input.dueTomorrow.map((d) => `${d.name} (${hiNum(d.amount)} ଟଙ୍କା)`).join(", ")} ଙ୍କଠାରୁ ଟଙ୍କା ଆସିବା କଥା।`);
+    mr.push(`उद्या ${input.dueTomorrow.map((d) => `${d.name} (${hiNum(d.amount)} रुपये)`).join(", ")} यांच्याकडून पैसे येणार आहेत.`);
+  }
+  if (input.disputes.length) {
+    or.push(`${hiNum(input.disputes.length)}ଟି ବିବାଦ ଦେଖିବାକୁ ହେବ: ${names(input.disputes)}।`);
+    mr.push(`${hiNum(input.disputes.length)} वाद तपासायचे आहेत: ${names(input.disputes)}.`);
+  }
+  if (input.productRequests.length) {
+    or.push(`ଗ୍ରାହକମାନେ ମାଗିଛନ୍ତି: ${input.productRequests.join(", ")}।`);
+    mr.push(`ग्राहकांनी मागितले: ${input.productRequests.join(", ")}.`);
+  }
   const lines: Line[] = [
     [
       "agent",
@@ -516,14 +542,22 @@ export function buildReportScript(input: {
     first ? `Call ${first.name} first; ${rs(first.amount)} is due from them.` : "Nobody is due tomorrow, so there's no rush.",
   ]);
   hi.push(first ? `पहले ${first.name} को कॉल कीजिए, उनसे ${hiNum(first.amount)} रुपये आने हैं।` : "कल किसी से पैसे नहीं आने हैं, तो कोई जल्दी नहीं।");
+  or.push(first ? `ପ୍ରଥମେ ${first.name} ଙ୍କୁ ଫୋନ କରନ୍ତୁ, ତାଙ୍କଠାରୁ ${hiNum(first.amount)} ଟଙ୍କା ଆସିବାର ଅଛି।` : "କାଲି କାହାଠାରୁ ଟଙ୍କା ଆସିବାର ନାହିଁ, ତେଣୁ କୌଣସି ତରବର ନାହିଁ।");
+  mr.push(first ? `आधी ${first.name} यांना फोन करा, त्यांच्याकडून ${hiNum(first.amount)} रुपये येणे आहे.` : "उद्या कोणाकडूनही पैसे येणार नाहीत, त्यामुळे घाई नाही.");
   lines.push(["shopkeeper", "ধন্যবাদ।", "Thank you."]);
   lines.push(["agent", "ভালো থাকবেন, শুভরাত্রি।", "Take care, good night."]);
   hi.push("अपना ख्याल रखिए, शुभ रात्रि।");
+  or.push("ଭଲରେ ରୁହନ୍ତୁ, ଶୁଭରାତ୍ରି।");
+  mr.push("काळजी घ्या, शुभ रात्री.");
   const turns = timeLines(lines);
   return {
     turns,
-    spokenBn: lines.filter((l) => l[0] === "agent").map((l) => l[1]).join(" "),
-    spokenEn: lines.filter((l) => l[0] === "agent").map((l) => l[2]).join(" "),
-    spokenHi: hi.join(" "),
+    spoken: {
+      en: lines.filter((l) => l[0] === "agent").map((l) => l[2]).join(" "),
+      hi: hi.join(" "),
+      or: or.join(" "),
+      bn: lines.filter((l) => l[0] === "agent").map((l) => l[1]).join(" "),
+      mr: mr.join(" "),
+    },
   };
 }

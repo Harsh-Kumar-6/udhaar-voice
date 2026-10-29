@@ -5,8 +5,10 @@ import { z } from "zod";
  * The Supabase tables (web/supabase/migrations) store these; lib/server/rows.ts maps between the two.
  */
 
-export const Language = z.enum(["bn", "hi", "en"]);
+export const Language = z.enum(["en", "hi", "or", "bn", "mr"]);
 export type Language = z.infer<typeof Language>;
+/** Every language, in the order the app lists them: English, Hindi, Odia, Bengali, Marathi. */
+export const LANGUAGES: readonly Language[] = Language.options;
 
 const isoDateTime = z.string(); // ISO 8601 timestamp
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/); // calendar date, shop's local time
@@ -59,8 +61,6 @@ export const Customer = z.object({
   phone: z.string(), // E.164, e.g. +919876543210
   language: Language,
   optedOut: z.boolean(),
-  /** Another customer who pays for this one (e.g. a son paying his mother's dues). */
-  paysThroughId: z.string().optional(),
   createdAt: isoDateTime,
 });
 export type Customer = z.infer<typeof Customer>;
@@ -85,7 +85,7 @@ export type LedgerEntry = z.infer<typeof LedgerEntry>;
 export const KhataImport = z.object({
   id: z.string(),
   shopId: z.string(),
-  source: z.enum(["sample", "upload"]),
+  source: z.enum(["sample", "upload", "manual", "file"]),
   createdAt: isoDateTime,
   entryIds: z.array(z.string()),
   /** Customers created by this import. */
@@ -226,6 +226,8 @@ export const Call = z.object({
   endedAt: isoDateTime.optional(),
   durationSec: z.number().nonnegative().optional(),
   costUsd: z.number().nonnegative().optional(),
+  /** Bolna's recording of the call (MP3), once it has ended. */
+  recordingUrl: z.string().optional(),
   transcript: z.array(Turn),
   extraction: Extraction.optional(),
   events: z.array(CallEvent),

@@ -7,10 +7,11 @@ type DisputeKind = Dispute["kind"];
  * these onto the agents; `{name}` placeholders are filled per call from `user_data`.
  */
 
-export const LANGUAGE_NAMES: Record<Language, string> = { bn: "Bengali", hi: "Hindi", en: "English" };
+export const LANGUAGE_NAMES: Record<Language, string> = { en: "English", hi: "Hindi", or: "Odia", bn: "Bengali", mr: "Marathi" };
 
 /** Bolna's language keys for a multilingual agent. */
-export const BOLNA_LANGUAGE: Record<Language, string> = { bn: "bn", hi: "hi", en: "en" };
+/** Bolna's language codes: Odia is "od" there. */
+export const BOLNA_LANGUAGE: Record<Language, string> = { en: "en", hi: "hi", or: "od", bn: "bn", mr: "mr" };
 
 export const REMINDER_WELCOME = "{greeting}";
 
@@ -61,6 +62,8 @@ How the call goes:
 export function reminderGreeting(language: Language, customerName: string, shopName: string): string {
   if (language === "bn") return `নমস্কার, আমি কি ${customerName}-এর সঙ্গে কথা বলছি? আমি ${shopName} থেকে ফোন করছি।`;
   if (language === "hi") return `नमस्ते, क्या मेरी बात ${customerName} जी से हो रही है? मैं ${shopName} की ओर से फ़ोन कर रही हूँ।`;
+  if (language === "or") return `ନମସ୍କାର, ମୁଁ କ'ଣ ${customerName} ଙ୍କ ସହ କଥା ହେଉଛି? ମୁଁ ${shopName} ତରଫରୁ ଫୋନ କରୁଛି।`;
+  if (language === "mr") return `नमस्कार, मी ${customerName} यांच्याशी बोलत आहे का? मी ${shopName} कडून फोन करत आहे.`;
   return `Hello, am I speaking with ${customerName}? I'm calling from ${shopName}.`;
 }
 
@@ -69,10 +72,16 @@ export function reminderGreeting(language: Language, customerName: string, shopN
  * person after its greeting, so a greeting that only announced the summary left the owner in silence.
  * `spoken` is the report's spoken text in each language, which already starts with a hello.
  */
-export function reportGreeting(language: Language, spoken: { bn: string; en: string; hi: string }): string {
-  if (language === "bn") return `${spoken.bn} কোনো প্রশ্ন আছে?`;
-  if (language === "hi") return `${spoken.hi} कोई सवाल है?`;
-  return `${spoken.en} Any questions?`;
+const ANY_QUESTIONS: Record<Language, string> = {
+  en: "Any questions?",
+  hi: "कोई सवाल है?",
+  or: "କିଛି ପ୍ରଶ୍ନ ଅଛି କି?",
+  bn: "কোনো প্রশ্ন আছে?",
+  mr: "काही प्रश्न आहे का?",
+};
+
+export function reportGreeting(language: Language, spoken: Record<Language, string>): string {
+  return `${spoken[language]} ${ANY_QUESTIONS[language]}`;
 }
 
 /** When Bolna ends the call itself (its "hang up using a prompt" setting). */
@@ -80,9 +89,15 @@ export const HANGUP_RULE =
   "End the call when Asha has said goodbye or thanked the person at the end, when the person said goodbye, when it is a wrong number, or when the person asked not to be called again.";
 
 /** Bolna's own lines, which otherwise exist only in English and Hindi. */
-export const CALL_LINES = {
-  hangup: { en: "Goodbye!", hi: "धन्यवाद, नमस्ते।", bn: "ধন্যবাদ, নমস্কার।" },
-  stillThere: { en: "Hello, are you still there?", hi: "हैलो, क्या आप लाइन पर हैं?", bn: "হ্যালো, আপনি কি লাইনে আছেন?" },
+export const CALL_LINES: Record<"hangup" | "stillThere", Record<Language, string>> = {
+  hangup: { en: "Goodbye!", hi: "धन्यवाद, नमस्ते।", or: "ଧନ୍ୟବାଦ, ନମସ୍କାର।", bn: "ধন্যবাদ, নমস্কার।", mr: "धन्यवाद, नमस्कार." },
+  stillThere: {
+    en: "Hello, are you still there?",
+    hi: "हैलो, क्या आप लाइन पर हैं?",
+    or: "ହେଲୋ, ଆପଣ ଲାଇନରେ ଅଛନ୍ତି କି?",
+    bn: "হ্যালো, আপনি কি লাইনে আছেন?",
+    mr: "हॅलो, तुम्ही लाइनवर आहात का?",
+  },
 };
 
 /* ---------------------------------------------------------------- extractions */

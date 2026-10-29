@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
 import { attempt, useApiMutation, useShop } from "@/lib/api/hooks";
-import type { Language } from "@/lib/domain/types";
+import { LANGUAGES, type Language } from "@/lib/domain/types";
 import { useT } from "@/lib/i18n";
 
 /** Adds a customer by hand, then opens their page to add what they owe. */
@@ -63,8 +63,8 @@ export function AddCustomerDialog({ open, onOpenChange }: { open: boolean; onOpe
           </div>
           <div className="space-y-2">
             <Label>{a.language}</Label>
-            <ToggleGroup type="single" variant="outline" value={chosen} onValueChange={(v) => v && setLanguage(v as Language)}>
-              {(["bn", "hi", "en"] as const).map((l) => (
+            <ToggleGroup type="single" variant="outline" className="flex-wrap" value={chosen} onValueChange={(v) => v && setLanguage(v as Language)}>
+              {LANGUAGES.map((l) => (
                 <ToggleGroupItem key={l} value={l}>
                   {t.common.language[l]}
                 </ToggleGroupItem>

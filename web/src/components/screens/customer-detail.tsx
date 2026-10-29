@@ -12,8 +12,10 @@ import {
   Phone,
   Plus,
   Sparkles,
-  Users,
   Pencil,
+  Trash2,
+  UserPen,
+  QrCode,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -25,7 +27,7 @@ import {
   ErrorBlock,
   LanguageTag,
   LoadingBlock,
-  MaskedPhone,
+  PhoneNumber,
   Money,
   OutcomeBadge,
   hourLabel,
@@ -33,6 +35,7 @@ import {
   TimeAgo,
 } from "@/components/app/bits";
 import { ScheduleDialog } from "@/components/app/schedule-dialog";
+import { UpiQrDialog } from "@/components/app/upi-qr-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -89,21 +92,8 @@ function CustomerView({ d }: { d: CustomerDetail }) {
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <StatusChip status={d.status} />
                 <LanguageTag language={customer.language} />
-                <MaskedPhone phone={customer.phone} />
+                <PhoneNumber phone={customer.phone} />
               </div>
-              {d.paysThrough ? (
-                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Users className="size-4" />
-                  <Link className="underline underline-offset-2" href={`/app/customers/${d.paysThrough.id}`}>
-                    {c.paysThrough(d.paysThrough.name)}
-                  </Link>
-                </p>
-              ) : null}
-              {d.paysFor.length ? (
-                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Users className="size-4" /> {c.paysFor(d.paysFor.map((p) => p.name).join(", "))}
-                </p>
-              ) : null}
             </div>
           </div>
           <div className="flex flex-col gap-3 md:items-end">
@@ -216,6 +206,9 @@ function CustomerActions({ d }: { d: CustomerDetail }) {
   const [payOpen, setPayOpen] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [nameOpen, setNameOpen] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   // The dashboard's "Update number" links here with #phone. This component only renders in the
   // browser (after the customer has loaded), so reading the hash while creating state is safe.
   const [phoneOpen, setPhoneOpen] = useState(() => typeof window !== "undefined" && window.location.hash === "#phone");
@@ -245,7 +238,7 @@ function CustomerActions({ d }: { d: CustomerDetail }) {
   const callNow = () => callAt("now");
 
   const shopName = shop.data?.name ?? "";
-  const upi = shop.data ? upiLink({ upiId: shop.data.upiId, payeeName: shopName, amount: d.balance, note: "Khata dues" }) : "";
+  const upi = shop.data ? upiLink({ upiId: shop.data.upiId, payeeName: shopName, amount: d.balance }) : "";
   const whatsapp = d.customer.phone ? whatsappShareLink(d.customer.phone, c.upiMessage(shopName, formatINR(d.balance), upi)) : undefined;
 
   return (
@@ -290,6 +283,14 @@ function CustomerActions({ d }: { d: CustomerDetail }) {
           </a>
         </Button>
       ) : null}
+      {shop.data?.upiId && d.balance > 0 ? (
+        <>
+          <Button size="lg" variant="outline" onClick={() => setQrOpen(true)}>
+            <QrCode /> {c.actions.showQr}
+          </Button>
+          <UpiQrDialog open={qrOpen} onOpenChange={setQrOpen} link={upi} amount={formatINR(d.balance)} />
+        </>
+      ) : null}
       <Button size="lg" variant="outline" onClick={() => setPayOpen(true)} disabled={d.balance <= 0}>
         <BadgeIndianRupee /> {c.actions.recordPayment}
       </Button>
@@ -303,6 +304,9 @@ function CustomerActions({ d }: { d: CustomerDetail }) {
           <DropdownMenuItem onClick={() => setEntryOpen(true)}>
             <Plus /> {c.actions.addEntry}
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setNameOpen(true)}>
+            <UserPen /> {c.actions.editName}
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setPhoneOpen(true)}>
             <Phone /> {c.actions.editPhone}
           </DropdownMenuItem>
@@ -313,8 +317,14 @@ function CustomerActions({ d }: { d: CustomerDetail }) {
           >
             <PhoneOff /> {d.customer.optedOut ? c.actions.optIn : c.actions.optOut}
           </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={() => setRemoveOpen(true)}>
+            <Trash2 /> {c.actions.remove}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {nameOpen ? <NameDialog customer={d.customer} onClose={() => setNameOpen(false)} /> : null}
+      {removeOpen ? <RemoveDialog customer={d.customer} onClose={() => setRemoveOpen(false)} /> : null}
 
       <PaymentDialog open={payOpen} onOpenChange={setPayOpen} customerId={d.customer.id} suggested={d.nextPromise?.amount ?? d.balance} />
       <EntryDialog open={entryOpen} onOpenChange={setEntryOpen} customerId={d.customer.id} />
@@ -630,6 +640,85 @@ function PhoneDialog({ open, onOpenChange, current, onSave }: { open: boolean; o
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function NameDialog({ customer, onClose }: { customer: CustomerDetail["customer"]; onClose: () => void }) {
+  const n = useT().customers.detail.nameDialog;
+  const [name, setName] = useState(customer.name);
+  const [nameNative, setNameNative] = useState(customer.nameNative ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const update = useApiMutation((patch: { name: string; nameNative: string }) => api.updateCustomer(customer.id, patch));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return setError(n.invalid);
+    if (!(await attempt(update.mutateAsync({ name, nameNative })))) return;
+    toast.success(n.saved);
+    onClose();
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <form onSubmit={submit} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>{n.title}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="edit-name">{n.name}</Label>
+            <Input id="edit-name" value={name} onChange={(e) => { setName(e.target.value); setError(null); }} aria-invalid={!!error} />
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-name-native">{n.nameNative}</Label>
+            <Input id="edit-name-native" value={nameNative} onChange={(e) => setNameNative(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button type="submit" size="lg" disabled={update.isPending}>
+              {n.save}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Removing archives the customer: out of lists and calls, history kept. Asks before doing it. */
+function RemoveDialog({ customer, onClose }: { customer: CustomerDetail["customer"]; onClose: () => void }) {
+  const t = useT();
+  const c = t.customers.detail;
+  const router = useRouter();
+  const remove = useApiMutation(() => api.archiveCustomer(customer.id));
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {c.actions.remove}: {customer.name}
+          </DialogTitle>
+          <DialogDescription>{c.actions.removeConfirm}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            {t.common.actions.cancel}
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={remove.isPending}
+            onClick={async () => {
+              if (!(await attempt(remove.mutateAsync(undefined)))) return;
+              toast.success(c.removed(customer.name));
+              router.replace("/app/customers");
+            }}
+          >
+            {c.actions.remove}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

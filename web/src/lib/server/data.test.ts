@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toPromises, toShop } from "./data";
+import { toPromises, toShop, withoutArchived } from "./data";
 
 const NOW = new Date("2026-10-21T11:00:00");
 const promise = (id: string, due: string, created: string, kept: string | null = null) => ({
@@ -45,5 +45,20 @@ describe("shop", () => {
       { id: "u1", name: "Gopal Saha", phone: "+919000000001", created_at: "2026-10-01T00:00:00Z" },
     );
     expect(shop).toMatchObject({ ownerName: "Gopal Saha", ownerPhone: "+919000000001", upiId: "", reportTime: "20:00", callingHours: { start: 8, end: 19 } });
+  });
+});
+
+describe("removed customers", () => {
+  it("leave the lists along with their entries, payments, promises and notes", () => {
+    const active = withoutArchived(
+      [
+        { id: "c1", archived_at: null },
+        { id: "c2", archived_at: "2026-10-28T10:00:00Z" },
+      ],
+      { entries: [{ customer_id: "c1" }, { customer_id: "c2" }], notes: [{ customer_id: "c2" }] },
+    );
+    expect(active.customers.map((c) => c.id)).toEqual(["c1"]);
+    expect(active.entries).toEqual([{ customer_id: "c1" }]);
+    expect(active.notes).toEqual([]);
   });
 });

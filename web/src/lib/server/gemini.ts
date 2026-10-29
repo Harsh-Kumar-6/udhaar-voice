@@ -97,10 +97,10 @@ const KHATA_SCHEMA = {
   required: ["rows"],
 };
 
-const KHATA_INSTRUCTION = `You read photos of handwritten credit ledgers (khata) from small Indian shops. Pages are usually in Bengali, sometimes Hindi or English, often mixed, with Bengali or Devanagari digits.
+const KHATA_INSTRUCTION = `You read photos of handwritten credit ledgers (khata) from small Indian shops. Pages may be in Bengali, Hindi, Odia, Marathi or English, often mixed, with Bengali, Devanagari, Odia or Latin digits.
 Return one row per entry: who took goods on credit, what, how much and when.
 - Skip headings, totals, page numbers and lines that are payments received ("jama", "জমা", "जमा").
-- Read Bengali and Devanagari digits as numbers. "৳" or "/-" after a number marks rupees.
+- Read Bengali, Devanagari and Odia digits as numbers. "৳" or "/-" after a number marks rupees.
 - If a number is crossed out and another written beside it, amount is the new one and struck_amount the crossed-out one.
 - Dates are usually day/month. Use the year of today's date, or last year if that would put the date in the future.
 - Confidence is how sure you are of each field: below 0.8 means the shopkeeper should check it. Never guess silently.`;
@@ -127,7 +127,7 @@ const TRANSCRIPT_SCHEMA = {
   type: "object",
   properties: {
     text: { type: "string", description: "Exactly what was said, in the script of the language spoken. Empty if nothing was said." },
-    language: { type: "string", enum: ["bn", "hi", "en"] },
+    language: { type: "string", enum: ["en", "hi", "or", "bn", "mr"] },
   },
   required: ["text", "language"],
 };
@@ -143,8 +143,8 @@ export async function transcribeQuestion(audio: Uint8Array, mime: string): Promi
       },
     ],
     TRANSCRIPT_SCHEMA,
-    `You transcribe short questions a shopkeeper in India asks their credit book app, in Bengali, Hindi, English or a mix (Hinglish).
-Write Bengali in Bengali script and Hindi in Devanagari, except words said in English, which stay in English. Write Hinglish as spoken, in Latin letters.
+    `You transcribe short questions a shopkeeper in India asks their credit book app, in English, Hindi, Odia, Bengali, Marathi or a mix (Hinglish).
+Write each language in its own script (Hindi and Marathi in Devanagari, Odia in Odia, Bengali in Bengali), except words said in English, which stay in English. Write Hinglish as spoken, in Latin letters.
 Don't translate, answer or add anything. language is the main language spoken.`,
   );
 }

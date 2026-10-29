@@ -6,14 +6,13 @@ import { ErrorBlock, LoadingBlock, PageHeader } from "@/components/app/bits";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/app/password-input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import type { ProfileInput, Session } from "@/lib/api/contract";
 import { useApiMutation, useSession } from "@/lib/api/hooks";
-import { formatINR, upiLink } from "@/lib/domain/rules";
 import { useT } from "@/lib/i18n";
 
-const EXAMPLE_DUE = 250;
 
 export function ProfileScreen() {
   const t = useT().profile;
@@ -33,7 +32,7 @@ export function ProfileScreen() {
 const localPhone = (e164: string) => e164.replace(/^\+91/, "");
 
 function ProfileForm({ session: { user, shop } }: { session: Session }) {
-  const { profile: t, customers } = useT();
+  const { profile: t } = useT();
   const save = useApiMutation(api.updateProfile, { quiet: true });
   const [draft, setDraft] = useState<ProfileInput>({
     name: user.name,
@@ -60,12 +59,6 @@ function ProfileForm({ session: { user, shop } }: { session: Session }) {
       <Input id={`profile-${key}`} value={draft[key] ?? ""} onChange={(e) => set(key, e.target.value)} className="h-11 sm:h-10" {...props} />
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
-  );
-
-  const example = customers.detail.upiMessage(
-    draft.shopName || shop.name,
-    formatINR(EXAMPLE_DUE),
-    upiLink({ upiId: draft.upiId, payeeName: draft.shopName, amount: EXAMPLE_DUE, note: "Khata dues" }),
   );
 
   return (
@@ -96,10 +89,6 @@ function ProfileForm({ session: { user, shop } }: { session: Session }) {
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           {field("upiId", t.payments.upi, t.payments.upiHint, { autoCapitalize: "none", spellCheck: false })}
-          <div className="space-y-1.5">
-            <p className="text-sm font-medium">{t.payments.preview}</p>
-            <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs leading-relaxed break-all text-muted-foreground">{example}</p>
-          </div>
         </CardContent>
       </Card>
 
@@ -145,15 +134,15 @@ function ChangePassword() {
         <CardContent className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-1.5">
             <Label htmlFor="password-current">{t.current}</Label>
-            <Input id="password-current" type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} className="h-11 sm:h-10" />
+            <PasswordInput id="password-current" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} className="h-11 sm:h-10" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="password-new">{t.next}</Label>
-            <Input id="password-new" type="password" autoComplete="new-password" required minLength={6} value={next} onChange={(e) => setNext(e.target.value)} className="h-11 sm:h-10" />
+            <PasswordInput id="password-new" autoComplete="new-password" required minLength={6} value={next} onChange={(e) => setNext(e.target.value)} className="h-11 sm:h-10" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="password-again">{t.confirm}</Label>
-            <Input id="password-again" type="password" autoComplete="new-password" required value={again} onChange={(e) => setAgain(e.target.value)} className="h-11 sm:h-10" />
+            <PasswordInput id="password-again" autoComplete="new-password" required value={again} onChange={(e) => setAgain(e.target.value)} className="h-11 sm:h-10" />
           </div>
           {error ? <p className="text-sm text-destructive sm:col-span-3">{error}</p> : null}
           <div className="sm:col-span-3">

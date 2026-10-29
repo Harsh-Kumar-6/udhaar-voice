@@ -91,8 +91,6 @@ export function customerDetail(db: ShopData, id: string, now: Date): CustomerDet
     notes,
     calls: customerCalls(db, id),
     memory: buildMemory({ promises, disputes, notes }, now, fmtDay),
-    paysThrough: c.paysThroughId ? db.customers.find((x) => x.id === c.paysThroughId) : undefined,
-    paysFor: db.customers.filter((x) => x.paysThroughId === id),
   };
 }
 
@@ -304,7 +302,7 @@ export function dailyReportWithScript(db: ShopData, now: Date): { report: DailyR
       callsMade: callsToday.length,
       callsAnswered: callsToday.filter((k) => k.status === "completed").length,
       productRequests,
-      spoken: { bn: script.spokenBn, en: script.spokenEn, hi: script.spokenHi },
+      spoken: script.spoken,
     },
     turns: script.turns,
   };
@@ -321,7 +319,6 @@ export function graph(db: ShopData, now: Date): GraphData {
     const cid = `cust:${c.id}`;
     nodes.push({ id: cid, type: "customer", label: c.name, state: s.status, amount: s.balance, customerId: c.id, detail: c.nameNative });
     edges.push({ id: `owes:${c.id}`, source: cid, target: "shop", kind: "owes" });
-    if (c.paysThroughId) edges.push({ id: `pays:${c.id}`, source: cid, target: `cust:${c.paysThroughId}`, kind: "pays_through" });
   }
 
   for (const p of db.promises) {
@@ -342,7 +339,6 @@ export function graph(db: ShopData, now: Date): GraphData {
       products.set(n.product, [...(products.get(n.product) ?? []), n.customerId]);
       continue;
     }
-    if (n.kind === "relationship") continue; // already drawn as a pays-through edge
     nodes.push({ id: `note:${n.id}`, type: "note", label: n.text.length > 34 ? `${n.text.slice(0, 32)}…` : n.text, state: n.kind, customerId: n.customerId, detail: n.text });
     edges.push({ id: `e:note:${n.id}`, source: `cust:${n.customerId}`, target: `note:${n.id}`, kind: "said" });
   }

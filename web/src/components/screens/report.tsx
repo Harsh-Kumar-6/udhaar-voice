@@ -1,11 +1,9 @@
 "use client";
 
 import { format, parseISO } from "date-fns";
-import { PhoneCall, Square, Volume2 } from "lucide-react";
+import { PhoneCall } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useSyncExternalStore } from "react";
 
-const noSubscription = () => () => {};
 import { CustomerName, ErrorBlock, LoadingBlock, Money, PageHeader, Stat } from "@/components/app/bits";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,10 +11,11 @@ import { api } from "@/lib/api";
 import type { DailyReport } from "@/lib/api/contract";
 import { attempt, useApiMutation, useDailyReport, useShop } from "@/lib/api/hooks";
 import { formatINR } from "@/lib/domain/rules";
-import { useT } from "@/lib/i18n";
+import { formatLongDate, useAppLanguage, useT } from "@/lib/i18n";
 
 export function ReportScreen() {
   const t = useT().report;
+  const language = useAppLanguage();
   const q = useDailyReport();
   const shop = useShop();
   if (q.isPending) return <LoadingBlock />;
@@ -27,7 +26,7 @@ export function ReportScreen() {
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow={format(parseISO(r.date), "EEEE d MMMM")} title={t.title} description={shop.data?.reportEnabled === false ? t.descriptionOff : t.description(reportTime)} />
+      <PageHeader eyebrow={formatLongDate(parseISO(r.date), language)} title={t.title} description={shop.data?.reportEnabled === false ? t.descriptionOff : t.description(reportTime)} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label={t.stats.collected} value={formatINR(r.collected)} tone="paid" />
         <Stat label={t.stats.promised} value={formatINR(promisedTotal)} tone="promised" />
@@ -78,37 +77,10 @@ function ListCard({ title, rows }: { title: string; rows: { key: string; custome
 
 function SpokenCard({ r }: { r: DailyReport }) {
   const t = useT().report.spoken;
-  // The text in the language the evening call speaks, with the English beside it.
-  const language = useShop().data?.reportLanguage ?? "bn";
+  // What the evening call says, shown in the app's language.
+  const language = useAppLanguage();
   const router = useRouter();
   const send = useApiMutation(api.sendReportCall);
-  const [speaking, setSpeaking] = useState(false);
-  // Browser-only capability: false on the server, the real answer in the browser, no extra render.
-  const canSpeak = useSyncExternalStore(
-    noSubscription,
-    () => "speechSynthesis" in window,
-    () => false,
-  );
-
-  // Stop any preview when leaving the page.
-  useEffect(() => () => window.speechSynthesis?.cancel(), []);
-
-  const preview = () => {
-    const synth = window.speechSynthesis;
-    if (speaking) {
-      synth.cancel();
-      setSpeaking(false);
-      return;
-    }
-    const utterance = new SpeechSynthesisUtterance(r.spoken.en);
-    utterance.lang = "en-IN";
-    const voice = synth.getVoices().find((v) => v.lang === "en-IN") ?? synth.getVoices().find((v) => v.lang.startsWith("en"));
-    if (voice) utterance.voice = voice;
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    synth.speak(utterance);
-    setSpeaking(true);
-  };
 
   return (
     <Card className="border-primary/25">
@@ -117,28 +89,19 @@ function SpokenCard({ r }: { r: DailyReport }) {
         <CardDescription>{t.description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 lg:grid-cols-2">
-          <p lang={language} className="rounded-lg bg-accent px-4 py-3 leading-relaxed">
-            {r.spoken[language]}
-          </p>
-          {language !== "en" ? <p className="rounded-lg border px-4 py-3 text-sm leading-relaxed text-muted-foreground">{r.spoken.en}</p> : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="lg"
-            disabled={send.isPending}
-            onClick={async () => {
-              const sent = await attempt(send.mutateAsync(undefined));
-              if (sent) router.push(`/app/calls/${sent.value.id}`);
-            }}
-          >
-            <PhoneCall /> {send.isPending ? t.sending : t.send}
-          </Button>
-          <Button size="lg" variant="outline" onClick={preview} disabled={!canSpeak}>
-            {speaking ? <Square /> : <Volume2 />} {speaking ? t.stopPreview : t.preview}
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">{canSpeak ? t.previewNote : t.noVoice}</p>
+        <p lang={language} className="rounded-lg bg-accent px-4 py-3 leading-relaxed">
+          {r.spoken[language]}
+        </p>
+        <Button
+          size="lg"
+          disabled={send.isPending}
+          onClick={async () => {
+            const sent = await attempt(send.mutateAsync(undefined));
+            if (sent) router.push(`/app/calls/${sent.value.id}`);
+          }}
+        >
+          <PhoneCall /> {send.isPending ? t.sending : t.send}
+        </Button>
       </CardContent>
     </Card>
   );

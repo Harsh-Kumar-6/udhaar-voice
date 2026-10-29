@@ -27,8 +27,9 @@ export const settings = {
     time: "Time",
     language: "Language",
   },
-  save: "Save settings",
-  saved: "Settings saved",
+  autosave: "Changes save as you make them.",
+  saving: "Saving…",
+  saved: "Saved",
   invalid: "Check the highlighted fields.",
   prototype: {
     title: "Demo controls",

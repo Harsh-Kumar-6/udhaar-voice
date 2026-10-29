@@ -15,7 +15,6 @@ export const profile = {
     title: "Payments",
     upi: "UPI ID",
     upiHint: "Goes into the payment links customers get on WhatsApp.",
-    preview: "What a customer gets (example: ₹250 due)",
   },
   account: {
     title: "Account",

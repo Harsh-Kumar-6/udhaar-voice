@@ -5,6 +5,7 @@ import {
   JetBrains_Mono,
   Noto_Sans_Bengali,
   Noto_Sans_Devanagari,
+  Noto_Sans_Oriya,
 } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
@@ -14,11 +15,12 @@ const sans = Hanken_Grotesk({ variable: "--font-hanken", subsets: ["latin"] });
 const mono = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin"] });
 const bengali = Noto_Sans_Bengali({ variable: "--font-noto-bengali", subsets: ["bengali"] });
 const devanagari = Noto_Sans_Devanagari({ variable: "--font-noto-devanagari", subsets: ["devanagari"] });
+const odia = Noto_Sans_Oriya({ variable: "--font-noto-odia", subsets: ["oriya"] });
 
 export const metadata: Metadata = {
   title: { default: "Udhaar Voice", template: "%s · Udhaar Voice" },
   description:
-    "Photograph a shop's credit ledger. Udhaar Voice calls each customer in Bengali or Hindi, records promises to pay, and lets the shopkeeper ask the khata anything by voice.",
+    "Photograph a shop's credit ledger. Udhaar Voice calls each customer in their own language, records promises to pay, and lets the shopkeeper ask the khata anything by voice.",
 };
 
 export const viewport: Viewport = {
@@ -33,7 +35,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${display.variable} ${sans.variable} ${mono.variable} ${bengali.variable} ${devanagari.variable} h-full antialiased`}
+      className={`${display.variable} ${sans.variable} ${mono.variable} ${bengali.variable} ${devanagari.variable} ${odia.variable} h-full antialiased`}
     >
       <body className="min-h-dvh">
         <Providers>{children}</Providers>
