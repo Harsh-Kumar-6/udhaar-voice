@@ -1,20 +1,32 @@
-import { GoogleGenAI, type Content, type FunctionDeclaration, type GenerateContentConfig, type GenerateContentResponse } from "@google/genai";
-import type { Language } from "@/lib/domain/types";
+import { GoogleGenAI, type Content, type GenerateContentConfig, type GenerateContentResponse } from "@google/genai";
+import {
+  baseMime,
+  KHATA_INSTRUCTION,
+  KHATA_SCHEMA,
+  khataPrompt,
+  TRANSCRIPT_INSTRUCTION,
+  TRANSCRIPT_PROMPT,
+  TRANSCRIPT_SCHEMA,
+  usableLines,
+  type Provider,
+  type ReadLine,
+  type ToolAnswer,
+  type ToolRun,
+  type ToolSpec,
+} from "./ai";
 
-/**
- * Gemini, for what the app reads and understands: khata photos, spoken questions, and the "Ask your
- * khata" assistant. Server only: it carries our API key. Every answer is checked against a schema.
- */
+/** Gemini, the first provider tried (`lib/server/ai.ts`). Server only: it carries our API key. */
 
 export const geminiConfigured = () => Boolean(process.env.GEMINI_API_KEY);
 export const geminiModel = () => process.env.GEMINI_MODEL || "gemini-3.8-flash";
 
 /**
  * The model to try when the main one is busy: in testing, gemini-3.8-flash often answered 503
- * ("high demand"), and the SDK's default five retries with back-off took minutes.
+ * ("high demand"), and the SDK's default five retries with back-off took minutes. With Meta set up,
+ * Meta is the fallback instead: when one Gemini model is down, the other usually is too.
  */
 const fallbackModel = () => process.env.GEMINI_FALLBACK_MODEL || "gemini-3.6-flash";
-const models = () => [...new Set([geminiModel(), fallbackModel()])];
+const models = () => (process.env.META_API_KEY ? [geminiModel()] : [...new Set([geminiModel(), fallbackModel()])]);
 
 let client: GoogleGenAI | undefined;
 function ai(): GoogleGenAI {
@@ -26,8 +38,8 @@ function ai(): GoogleGenAI {
 }
 
 /**
- * Runs `attempt` with the main model, then with the fallback if the main one fails, each within its
- * time budget (ms). The budgets add up to well under the 60 s a server request may take.
+ * Runs `attempt` with each model in turn until one answers, each within its time budget (ms).
+ * The budgets add up to well under the 60 s a server request may take.
  */
 async function withFallback<T>(label: string, budgets: [number, number], attempt: (model: string, timeout: number) => Promise<T>): Promise<T> {
   let last: unknown;
@@ -45,9 +57,6 @@ async function withFallback<T>(label: string, budgets: [number, number], attempt
 const generate = (model: string, timeout: number, contents: Content[], config: GenerateContentConfig): Promise<GenerateContentResponse> =>
   ai().models.generateContent({ model, contents, config: { ...config, httpOptions: { timeout, retryOptions: { attempts: 1 } } } });
 
-/** "audio/webm;codecs=opus" → "audio/webm". */
-const baseMime = (mime: string) => mime.split(";")[0].trim().toLowerCase();
-
 async function json<T>(label: string, budgets: [number, number], contents: Content[], schema: unknown, systemInstruction: string): Promise<T> {
   return withFallback(label, budgets, async (model, timeout) => {
     const res = await generate(model, timeout, contents, { systemInstruction, responseMimeType: "application/json", responseJsonSchema: schema, temperature: 0 });
@@ -56,122 +65,42 @@ async function json<T>(label: string, budgets: [number, number], contents: Conte
   });
 }
 
-/* ---------------------------------------------------------------- khata photos */
+const inline = (bytes: Uint8Array, mime: string) => ({ inlineData: { mimeType: mime, data: Buffer.from(bytes).toString("base64") } });
 
-/** One line of a khata page as read. Confidence is 0–1 per field. */
-export type ReadLine = {
-  name: string;
-  name_native: string;
-  amount: number;
-  struck_amount: number | null;
-  date: string | null;
-  items: string;
-  confidence: { name: number; amount: number; date: number; items: number };
-};
-
-const confidence = { type: "number", minimum: 0, maximum: 1 };
-const KHATA_SCHEMA = {
-  type: "object",
-  properties: {
-    rows: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          name: { type: "string", description: "The customer's name in Latin letters, e.g. Ramesh." },
-          name_native: { type: "string", description: "The name exactly as written, in its own script. Empty if written in Latin letters." },
-          amount: { type: "integer", description: "The amount owed in whole rupees, as finally written." },
-          struck_amount: { type: ["integer", "null"], description: "An amount crossed out and written over, if any." },
-          date: { type: ["string", "null"], description: "The entry's date as YYYY-MM-DD, or null if the line has none." },
-          items: { type: "string", description: "What was bought, in short English, e.g. Rice 2 kg." },
-          confidence: {
-            type: "object",
-            properties: { name: confidence, amount: confidence, date: confidence, items: confidence },
-            required: ["name", "amount", "date", "items"],
-          },
-        },
-        required: ["name", "name_native", "amount", "struck_amount", "date", "items", "confidence"],
-      },
-    },
-  },
-  required: ["rows"],
-};
-
-const KHATA_INSTRUCTION = `You read photos of handwritten credit ledgers (khata) from small Indian shops. Pages may be in Bengali, Hindi, Odia, Marathi or English, often mixed, with Bengali, Devanagari, Odia or Latin digits.
-Return one row per entry: who took goods on credit, what, how much and when.
-- Skip headings, totals, page numbers and lines that are payments received ("jama", "জমা", "जमा").
-- Read Bengali, Devanagari and Odia digits as numbers. "৳" or "/-" after a number marks rupees.
-- If a number is crossed out and another written beside it, amount is the new one and struck_amount the crossed-out one.
-- Dates are usually day/month. Use the year of today's date, or last year if that would put the date in the future.
-- Confidence is how sure you are of each field: below 0.8 means the shopkeeper should check it. Never guess silently.`;
-
-export async function readKhataPhoto(image: Uint8Array, mime: string, today: string): Promise<ReadLine[]> {
+async function readKhataPhoto(image: Uint8Array, mime: string, today: string): Promise<ReadLine[]> {
   const result = await json<{ rows: ReadLine[] }>(
     "khata photo",
     [30_000, 20_000],
-    [
-      {
-        role: "user",
-        parts: [{ inlineData: { mimeType: baseMime(mime) || "image/jpeg", data: Buffer.from(image).toString("base64") } }, { text: `Today is ${today}. Read every entry on this page.` }],
-      },
-    ],
+    [{ role: "user", parts: [inline(image, baseMime(mime) || "image/jpeg"), { text: khataPrompt(today) }] }],
     KHATA_SCHEMA,
     KHATA_INSTRUCTION,
   );
-  return result.rows.filter((r) => r.name?.trim() && Number.isFinite(r.amount) && r.amount > 0);
+  return usableLines(result.rows);
 }
 
-/* ---------------------------------------------------------------- spoken questions */
-
-const TRANSCRIPT_SCHEMA = {
-  type: "object",
-  properties: {
-    text: { type: "string", description: "Exactly what was said, in the script of the language spoken. Empty if nothing was said." },
-    language: { type: "string", enum: ["en", "hi", "or", "bn", "mr"] },
-  },
-  required: ["text", "language"],
-};
-
-export async function transcribeQuestion(audio: Uint8Array, mime: string): Promise<{ text: string; language: Language }> {
-  return json(
+const transcribeQuestion: Provider["transcribeQuestion"] = (audio, mime) =>
+  json(
     "transcription",
     [15_000, 12_000],
-    [
-      {
-        role: "user",
-        parts: [{ inlineData: { mimeType: baseMime(mime) || "audio/webm", data: Buffer.from(audio).toString("base64") } }, { text: "Transcribe this question." }],
-      },
-    ],
+    [{ role: "user", parts: [inline(audio, baseMime(mime) || "audio/webm"), { text: TRANSCRIPT_PROMPT }] }],
     TRANSCRIPT_SCHEMA,
-    `You transcribe short questions a shopkeeper in India asks their credit book app, in English, Hindi, Odia, Bengali, Marathi or a mix (Hinglish).
-Write each language in its own script (Hindi and Marathi in Devanagari, Odia in Odia, Bengali in Bengali), except words said in English, which stay in English. Write Hinglish as spoken, in Latin letters.
-Don't translate, answer or add anything. language is the main language spoken.`,
+    TRANSCRIPT_INSTRUCTION,
   );
-}
-
-/* ---------------------------------------------------------------- the assistant */
-
-export type ToolRun = (name: string, args: Record<string, unknown>) => Promise<unknown>;
 
 /**
  * Answers a question by letting Gemini call our tools on the shop's data, a few rounds at most.
  * Returns the final answer and the calls made, in order.
  */
-export async function answerWithTools(
-  question: string,
-  tools: FunctionDeclaration[],
-  run: ToolRun,
-  systemInstruction: string,
-): Promise<{ answer: string; calls: { name: string; args: Record<string, unknown> }[] }> {
+async function answerWithTools(question: string, tools: ToolSpec[], run: ToolRun, systemInstruction: string): Promise<ToolAnswer> {
   // A conversation stays on one model: thought signatures only mean something to the model that made them.
-  // The whole answer must arrive within ~40 s; after that the keyword assistant answers instead.
+  // The whole answer must arrive within ~40 s, inside one server request.
   const deadline = Date.now() + 40_000;
   return withFallback("ask", [12_000, 12_000], (model, timeout) => converse(model, timeout, deadline, question, tools, run, systemInstruction));
 }
 
-async function converse(model: string, timeout: number, deadline: number, question: string, tools: FunctionDeclaration[], run: ToolRun, systemInstruction: string) {
+async function converse(model: string, timeout: number, deadline: number, question: string, tools: ToolSpec[], run: ToolRun, systemInstruction: string) {
   const contents: Content[] = [{ role: "user", parts: [{ text: question }] }];
-  const calls: { name: string; args: Record<string, unknown> }[] = [];
+  const calls: ToolAnswer["calls"] = [];
   for (let round = 0; round < 4; round++) {
     const left = deadline - Date.now();
     if (left < 3_000) throw new Error("Out of time");
@@ -198,3 +127,12 @@ async function converse(model: string, timeout: number, deadline: number, questi
   }
   return { answer: "", calls };
 }
+
+export const gemini: Provider = {
+  name: "gemini",
+  configured: geminiConfigured,
+  model: geminiModel,
+  readKhataPhoto,
+  transcribeQuestion,
+  answerWithTools,
+};

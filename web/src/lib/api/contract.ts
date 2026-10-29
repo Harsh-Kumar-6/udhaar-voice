@@ -146,7 +146,8 @@ export type KhataRow = {
 };
 /** Where an import came from: a photo, the sample page, typed lines or a spreadsheet. */
 export type KhataSource = "sample" | "upload" | "manual" | "file";
-export type KhataExtraction = { scanId: string; source: KhataSource; rows: KhataRow[] };
+/** `model` is the model that read a photo. */
+export type KhataExtraction = { scanId: string; source: KhataSource; rows: KhataRow[]; model?: string };
 /** One khata line typed in or read from a spreadsheet. `date` is YYYY-MM-DD. */
 export type KhataLineInput = { name: string; nameNative?: string; amount: number; items: string; date: string; phone?: string };
 export type KhataSaveResult = { importId: string; added: number; updated: number; newCustomers: number };
@@ -164,6 +165,15 @@ export type AskAnswer = {
 
 /** Speech-to-text result for a question spoken to the khata. */
 export type Transcription = { text: string; language: Language };
+
+/** The AI model providers, in the order they are tried. */
+export type AiProvider = "gemini" | "meta";
+/**
+ * One try at reading or answering. When it fails and another provider is set up, `next` names the
+ * provider to ask instead, in a new request, so each gets a full request's time and the screen can
+ * say what is happening.
+ */
+export type AiStep<T> = { result: T } | { next: AiProvider };
 
 export type ScheduleInput = {
   customerIds: string[];
@@ -286,19 +296,21 @@ export interface UdhaarApi {
   cancelBatch(id: string): Promise<void>;
 
   /**
-   * "upload" reads `photo` (a JPEG or PNG under 4 MB); "sample" reads the drawn sample page;
-   * "manual" and "file" take `lines` typed in or read from a spreadsheet.
+   * "upload" reads `photo` (a JPEG or PNG under 4 MB) and keeps it as `scanId` (a UUID the browser
+   * makes); a later try with the same `scanId` and no photo reads the kept one, with `provider`.
+   * "sample" reads the drawn sample page; "manual" and "file" take `lines` typed in or read from a spreadsheet.
    */
-  extractKhata(input: { source: KhataSource; photo?: Blob; lines?: KhataLineInput[] }): Promise<KhataExtraction>;
-  saveKhata(input: { scanId: string; source: KhataExtraction["source"]; rows: KhataRow[] }): Promise<KhataSaveResult>;
+  extractKhata(input: { source: KhataSource; photo?: Blob; scanId?: string; lines?: KhataLineInput[]; provider?: AiProvider }): Promise<AiStep<KhataExtraction>>;
+  saveKhata(input: { scanId: string; source: KhataExtraction["source"]; rows: KhataRow[]; model?: string }): Promise<KhataSaveResult>;
   /** Recent photo imports, newest first. */
   listKhataImports(): Promise<KhataImportSummary[]>;
   /** Removes what an import added and restores what it changed. Customers it created go too, unless they have other records. */
   undoKhataImport(id: string): Promise<KhataUndoResult>;
 
-  ask(question: string): Promise<AskAnswer>;
-  /** Turns a recorded voice question (Bengali, Hindi or English) into text for `ask`. */
-  transcribe(audio: Blob): Promise<Transcription>;
+  /** With every provider failing, the keyword assistant answers. */
+  ask(question: string, provider?: AiProvider): Promise<AiStep<AskAnswer>>;
+  /** Turns a recorded voice question (WAV or WebM, in any of the app's languages) into text for `ask`. */
+  transcribe(audio: Blob, provider?: AiProvider): Promise<AiStep<Transcription>>;
   getDashboard(): Promise<DashboardData>;
   getDailyReport(): Promise<DailyReport>;
   sendReportCall(): Promise<Call>;

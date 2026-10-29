@@ -11,7 +11,8 @@ import { BOLNA_LANGUAGE, LANGUAGE_NAMES, reminderGreeting } from "./bolna/prompt
 import { loadLines, loadShop, loadShopData, toCall, type CallRow, type ShopData } from "./data";
 import { env } from "./env";
 import { fromInputLines, fromReadLines, photoPath, readSamplePage, toRows } from "./khata";
-import { geminiConfigured, geminiModel, readKhataPhoto, transcribeQuestion } from "./gemini";
+import { step } from "./ai";
+import { aiConfigured, PROVIDERS } from "./providers";
 import { batchSummaries, batchSummary, callDetail, callItems, candidates, customerDetail, dailyReport, dashboard, graph, summaries } from "./queries";
 import { runDispatcher } from "./dispatcher";
 import { batchCallsToCancel, callsToCancel, planBatchMove, planCallMove, planSchedule, type MovePlan } from "./scheduling";
@@ -417,34 +418,47 @@ export const serverApi: ServerApi = {
     await cancelCalls(ctx.sb, db.shop.id, batchCallsToCancel(db, id));
   },
 
-  extractKhata: async (ctx, { source, photo, lines }) => {
+  extractKhata: async (ctx, { source, photo, scanId: givenId, lines, provider }) => {
     const db = await shopData(ctx);
-    if (source === "sample") return readSamplePage(db, ctx.now);
+    if (source === "sample") return { result: readSamplePage(db, ctx.now) };
     if (source === "manual" || source === "file") {
       const given = fromInputLines(Array.isArray(lines) ? lines.slice(0, 500) : [], ctx.now);
       if (given.length === 0) throw new Error("Add at least one line with a name and an amount.");
-      return { scanId: crypto.randomUUID(), source, rows: toRows(db, given) };
+      return { result: { scanId: crypto.randomUUID(), source, rows: toRows(db, given) } };
     }
-    if (!(photo instanceof Blob) || photo.size === 0) throw new Error("Choose a photo of the khata page.");
-    if (photo.size > MAX_PHOTO_BYTES) throw new Error("That photo is too large. Try again with a smaller one.");
-    if (!geminiConfigured()) throw new Error("Reading photos isn't set up yet (GEMINI_API_KEY).");
-    const scanId = crypto.randomUUID();
-    const bytes = new Uint8Array(await photo.arrayBuffer());
-    // Kept in the shop's private folder, as evidence if an entry is disputed later.
-    const stored = await ctx.sb.storage.from("khata-photos").upload(photoPath(db.shop.id, scanId), bytes, { contentType: photo.type || "image/jpeg" });
-    if (stored.error) console.error("[khata] photo not stored:", stored.error.message);
+    if (!aiConfigured()) throw new Error("Reading photos isn't set up yet (GEMINI_API_KEY or META_API_KEY).");
+    const scanId = typeof givenId === "string" && UUID.test(givenId) ? givenId : crypto.randomUUID();
+    const path = photoPath(db.shop.id, scanId);
+    let bytes: Uint8Array;
+    let mime: string;
+    if (photo instanceof Blob && photo.size > 0) {
+      if (photo.size > MAX_PHOTO_BYTES) throw new Error("That photo is too large. Try again with a smaller one.");
+      bytes = new Uint8Array(await photo.arrayBuffer());
+      mime = photo.type || "image/jpeg";
+      // Kept in the shop's private folder, as evidence if an entry is disputed later, and for the next model to read.
+      const stored = await ctx.sb.storage.from("khata-photos").upload(path, bytes, { contentType: mime, upsert: true });
+      if (stored.error) console.error("[khata] photo not stored:", stored.error.message);
+    } else if (givenId) {
+      // A later try, or the same page after the screen was reloaded: read the photo already kept.
+      const kept = await ctx.sb.storage.from("khata-photos").download(path);
+      if (kept.error || !kept.data) throw new Error("That photo is no longer here. Take or upload it again.");
+      bytes = new Uint8Array(await kept.data.arrayBuffer());
+      mime = kept.data.type || "image/jpeg";
+    } else throw new Error("Choose a photo of the khata page.");
+
     let read;
     try {
-      read = await readKhataPhoto(bytes, photo.type || "image/jpeg", toDateKey(ctx.now));
+      read = await step(PROVIDERS, provider, "khata photo", async (p) => ({ lines: await p.readKhataPhoto(bytes, mime, toDateKey(ctx.now)), model: p.model() }));
     } catch (err) {
       console.error("[khata] read failed:", err instanceof Error ? err.message : err);
       throw new Error("Couldn't read that photo. Try again in good light, with the whole page in the frame.");
     }
-    if (read.length === 0) throw new Error("No entries found on that page. Try a clearer photo.");
-    return { scanId, source: "upload", rows: toRows(db, fromReadLines(read, ctx.now)) };
+    if ("next" in read) return read;
+    if (read.result.lines.length === 0) throw new Error("No entries found on that page. Try a clearer photo.");
+    return { result: { scanId, source: "upload", rows: toRows(db, fromReadLines(read.result.lines, ctx.now)), model: read.result.model } };
   },
 
-  saveKhata: async (ctx, { scanId, source, rows }) => {
+  saveKhata: async (ctx, { scanId, source, rows, model }) => {
     const db = await shopData(ctx);
     const byPhone = new Map(db.customers.filter((c) => c.phone).map((c) => [c.phone, c.id]));
     const payload = rows.map((row) => {
@@ -470,7 +484,7 @@ export const serverApi: ServerApi = {
         p_source: source,
         p_rows: payload,
         p_photo_path: photo,
-        p_model: source === "upload" ? geminiModel() : null,
+        p_model: source === "upload" && typeof model === "string" ? model.slice(0, 60) : null,
         // What was saved, after the shopkeeper's corrections, with each field's confidence.
         p_extraction: source === "upload" ? { rows } : null,
       }),
@@ -504,14 +518,15 @@ export const serverApi: ServerApi = {
     return { removed: result.removed, restored: result.restored, customersRemoved: result.customers_removed };
   },
 
-  ask: async (ctx, question) => ask(await shopData(ctx), question, ctx.now, (input) => serverApi.scheduleReminders(ctx, input)),
+  ask: async (ctx, question, provider) => ask(await shopData(ctx), question, ctx.now, (input) => serverApi.scheduleReminders(ctx, input), provider),
 
-  transcribe: async ({ sb }, audio) => {
+  transcribe: async ({ sb }, audio, provider) => {
     await requireSession(sb);
     if (!(audio instanceof Blob) || audio.size === 0) throw new Error("Nothing was recorded. Try again.");
-    if (!geminiConfigured()) throw new Error("Voice questions aren't set up yet (GEMINI_API_KEY).");
+    if (!aiConfigured()) throw new Error("Voice questions aren't set up yet (GEMINI_API_KEY or META_API_KEY).");
     try {
-      return await transcribeQuestion(new Uint8Array(await audio.arrayBuffer()), audio.type || "audio/webm");
+      const bytes = new Uint8Array(await audio.arrayBuffer());
+      return await step(PROVIDERS, provider, "transcription", (p) => p.transcribeQuestion(bytes, audio.type || "audio/webm"));
     } catch (err) {
       console.error("[transcribe]", err instanceof Error ? err.message : err);
       throw new Error("Couldn't hear that. Try again, or type your question.");

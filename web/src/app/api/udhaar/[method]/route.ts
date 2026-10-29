@@ -24,10 +24,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/udhaar/[met
     const multipart = (request.headers.get("content-type") ?? "").startsWith("multipart/form-data");
     if (name === "transcribe") {
       const form = await request.formData();
-      args = [form.get("audio")];
+      args = [form.get("audio"), form.get("provider") ?? undefined];
     } else if (name === "extractKhata" && multipart) {
       const form = await request.formData();
-      args = [{ source: form.get("source"), photo: form.get("photo") }];
+      args = [{ source: form.get("source"), photo: form.get("photo"), scanId: form.get("scanId") ?? undefined, provider: form.get("provider") ?? undefined }];
     } else {
       const body = (await request.json()) as { args?: unknown };
       args = Array.isArray(body.args) ? body.args : [];

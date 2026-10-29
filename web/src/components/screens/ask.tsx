@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowRight, Loader2, Mic, SendHorizontal, Sparkles, Square, Wrench } from "lucide-react";
+import { ArrowRight, Mic, SendHorizontal, Sparkles, Square, Wrench } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { AiProgress } from "@/components/app/ai-progress";
 import { PageHeader } from "@/components/app/bits";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +13,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { api } from "@/lib/api";
 import type { AskAnswer } from "@/lib/api/contract";
 import { attempt, useApiMutation } from "@/lib/api/hooks";
+import { untilAnswered } from "@/lib/api/steps";
+import { toWav } from "@/lib/audio";
+import { useLeaveWarning } from "@/hooks/use-leave-warning";
 import { useNow } from "@/hooks/use-now";
 import { useVoiceRecorder } from "@/hooks/use-voice-recorder";
 import { useT } from "@/lib/i18n";
@@ -19,13 +23,17 @@ import { cn } from "@/lib/utils";
 
 type Message = { id: number; role: "user"; text: string; spoken?: boolean } | { id: number; role: "assistant"; answer: AskAnswer };
 
-const hasIndicScript = (s: string) => /[ऀ-৿]/.test(s);
+/** The language of a question's script, so it gets the right font; Latin text has none. */
+const scriptLang = (s: string) => (/[ঀ-৿]/.test(s) ? "bn" : /[ଁ-୷]/.test(s) ? "or" : /[ऀ-ॿ]/.test(s) ? "hi" : undefined);
 
 export function AskScreen() {
   const t = useT().ask;
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
-  const ask = useApiMutation(api.ask);
+  // Whether a second model has taken over the current question or recording.
+  const [backup, setBackup] = useState(false);
+  const onNext = () => setBackup(true);
+  const ask = useApiMutation((question: string) => untilAnswered((provider) => api.ask(question, provider), onNext));
   const nextId = useRef(1);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -37,20 +45,29 @@ export function AskScreen() {
     const q = question.trim();
     if (!q || ask.isPending) return;
     setText("");
+    setBackup(false);
     setMessages((m) => [...m, { id: nextId.current++, role: "user", text: q, spoken }]);
     const answered = await attempt(ask.mutateAsync(q));
     if (answered) setMessages((m) => [...m, { id: nextId.current++, role: "assistant", answer: answered.value }]);
   };
 
   const voice = useVoiceRecorder();
-  const transcribe = useApiMutation(api.transcribe, { quiet: true });
+  const transcribe = useApiMutation(
+    async (clip: Blob) => {
+      const audio = await toWav(clip);
+      return untilAnswered((provider) => api.transcribe(audio, provider), onNext);
+    },
+    { quiet: true },
+  );
   const busy = ask.isPending || transcribe.isPending;
+  useLeaveWarning(busy);
 
   const toggleVoice = async () => {
     if (voice.recordingSince) return voice.stop();
     // The text box is locked while recording, so what's typed now is what's there when the words arrive.
     const typed = text.trim();
     const started = await voice.start(async (audio) => {
+      setBackup(false);
       try {
         const heard = await transcribe.mutateAsync(audio);
         // Spoken words go after anything already typed, for the shopkeeper to check and send.
@@ -81,7 +98,7 @@ export function AskScreen() {
                       <Mic className="size-3" /> {t.spoken}
                     </span>
                   ) : null}
-                  <p lang={hasIndicScript(m.text) ? (/[ঀ-৿]/.test(m.text) ? "bn" : "hi") : undefined}>{m.text}</p>
+                  <p lang={scriptLang(m.text)}>{m.text}</p>
                 </Bubble>
               ) : (
                 <Bubble key={m.id} role="assistant">
@@ -91,16 +108,12 @@ export function AskScreen() {
             )}
             {transcribe.isPending ? (
               <Bubble role="user">
-                <p className="flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin" /> {t.transcribing}
-                </p>
+                <AiProgress label={t.transcribing} backup={backup} slowAfter={10} className="[&_*]:text-primary-foreground" />
               </Bubble>
             ) : null}
             {ask.isPending ? (
               <Bubble role="assistant">
-                <p className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> {t.thinking}
-                </p>
+                <AiProgress label={t.thinking} backup={backup} slowAfter={12} />
               </Bubble>
             ) : null}
             <div ref={endRef} />

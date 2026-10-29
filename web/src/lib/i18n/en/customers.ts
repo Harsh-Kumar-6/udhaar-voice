@@ -7,7 +7,7 @@ export const customers = {
     title: "Add a customer",
     description: "For someone who isn't in a khata photo yet.",
     name: "Name",
-    nameNative: "Name in Bengali or Hindi script (optional)",
+    nameNative: "Name in their own script (optional)",
     phone: "Mobile number (optional)",
     language: "Calls in",
     save: "Add customer",

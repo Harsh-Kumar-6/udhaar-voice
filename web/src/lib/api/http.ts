@@ -46,20 +46,23 @@ export const httpApi: UdhaarApi = {
   listBatches: json("listBatches"),
   rescheduleBatch: json("rescheduleBatch"),
   cancelBatch: json("cancelBatch"),
-  extractKhata: ({ source, photo }) => {
-    if (!photo) return json("extractKhata")({ source });
+  extractKhata: (input) => {
+    if (!input.photo) return json("extractKhata")(input);
     const form = new FormData();
-    form.append("source", source);
-    form.append("photo", photo, "khata.jpg");
+    form.append("source", input.source);
+    form.append("photo", input.photo, "khata.jpg");
+    if (input.scanId) form.append("scanId", input.scanId);
+    if (input.provider) form.append("provider", input.provider);
     return call("extractKhata", { body: form });
   },
   saveKhata: json("saveKhata"),
   listKhataImports: json("listKhataImports"),
   undoKhataImport: json("undoKhataImport"),
   ask: json("ask"),
-  transcribe: (audio) => {
+  transcribe: (audio, provider) => {
     const form = new FormData();
     form.append("audio", audio);
+    if (provider) form.append("provider", provider);
     return call("transcribe", { body: form });
   },
   getDashboard: json("getDashboard"),

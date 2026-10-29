@@ -3,6 +3,12 @@ import type { CallOutcome, CallStatus, CustomerStatus, Language, NoteKind } from
 export const common = {
   appName: "Udhaar Voice",
   password: { show: "Show password", hide: "Hide password" },
+  /** While a model reads or answers: what to expect, after a while, and once a second model has taken over. */
+  ai: {
+    usual: "This usually takes 10–30 seconds.",
+    slow: "Taking longer than usual, but still working. Please keep this page open.",
+    backup: "The first AI model is busy, so a second one is working on it. This can take up to a minute more.",
+  },
   status: {
     due: "Due",
     overdue: "Overdue",

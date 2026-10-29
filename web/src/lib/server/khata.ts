@@ -3,7 +3,7 @@ import { matchSavedEntry, toDateKey } from "@/lib/domain/rules";
 import type { KhataExtraction, KhataLineInput, KhataRow } from "@/lib/api/contract";
 import { SAMPLE_KHATA } from "@/lib/demo/khata-sample";
 import type { ShopData } from "./data";
-import type { ReadLine } from "./gemini";
+import type { ReadLine } from "./ai";
 import { findCustomerByName } from "./queries";
 
 /** Rows read from a khata page, matched against the shop's customers and saved entries. */

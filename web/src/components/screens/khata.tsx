@@ -1,11 +1,12 @@
 "use client";
 
 import { formatDistanceToNowStrict, parseISO } from "date-fns";
-import { Camera, CheckCircle2, FileImage, FileSpreadsheet, ImageUp, Keyboard, Loader2, PhoneCall, RotateCcw, Undo2 } from "lucide-react";
+import { Camera, CheckCircle2, FileImage, FileSpreadsheet, ImageUp, Keyboard, PhoneCall, RotateCcw, Undo2 } from "lucide-react";
 import { readSheet } from "read-excel-file/browser";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { AiProgress } from "@/components/app/ai-progress";
 import { Money, PageHeader } from "@/components/app/bits";
 import { SampleKhataPage } from "@/components/app/sample-khata";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,9 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { shrinkPhoto } from "@/lib/image";
-import type { KhataExtraction, KhataLineInput, KhataRow, KhataRowAction, KhataSaveResult, KhataSource } from "@/lib/api/contract";
+import type { AiProvider, KhataExtraction, KhataLineInput, KhataRow, KhataRowAction, KhataSaveResult, KhataSource } from "@/lib/api/contract";
+import { untilAnswered } from "@/lib/api/steps";
+import { useLeaveWarning } from "@/hooks/use-leave-warning";
 import { parseCsv, rowsToLines } from "@/lib/khata-file";
 import { CameraDialog } from "@/components/app/camera-dialog";
 import { ManualEntryDialog } from "@/components/app/manual-entry-dialog";
@@ -27,14 +30,40 @@ import { cn } from "@/lib/utils";
 
 type Stage =
   | { kind: "start" }
-  | { kind: "reading"; source: KhataSource; imageUrl?: string }
+  | { kind: "reading"; source: KhataSource; imageUrl?: string; since: number; backup: boolean }
   | { kind: "review"; source: KhataSource; imageUrl?: string; scan: KhataExtraction }
   | ({ kind: "saved"; withoutPhone: number } & KhataSaveResult);
 
 const LOW = 0.8;
 
+/**
+ * A photo being read, kept in this tab so a reload carries on with the same photo (the server
+ * keeps it under `scanId`) instead of starting over. Forgotten after 10 minutes.
+ */
+type Pending = { scanId: string; since: number; provider?: AiProvider };
+const PENDING_KEY = "udhaar-khata-reading";
+const PENDING_MAX_MS = 10 * 60_000;
+
+function remember(pending: Pending | null) {
+  try {
+    if (pending) sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+    else sessionStorage.removeItem(PENDING_KEY);
+  } catch {
+    // Blocked storage: a reload starts over.
+  }
+}
+
+function recall(): Pending | null {
+  try {
+    const pending = JSON.parse(sessionStorage.getItem(PENDING_KEY) ?? "null") as Pending | null;
+    return pending && Date.now() - pending.since < PENDING_MAX_MS ? pending : null;
+  } catch {
+    return null;
+  }
+}
+
 export function KhataScreen() {
-  const t = useT().khata;
+  const { khata: t, common } = useT();
   const [stage, setStage] = useState<Stage>({ kind: "start" });
   const cameraInput = useRef<HTMLInputElement>(null);
   const photoInput = useRef<HTMLInputElement>(null);
@@ -48,18 +77,56 @@ export function KhataScreen() {
   // Free the photo preview when it is no longer shown.
   useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
 
-  const read = async (source: KhataSource, file?: File, lines?: KhataLineInput[]) => {
+  // Each read gets a number; Cancel moves it on, so a cancelled read's answer is dropped when it arrives.
+  const run = useRef(0);
+  useLeaveWarning(stage.kind === "reading");
+
+  const read = async (source: KhataSource, file?: File, lines?: KhataLineInput[], resume?: Pending) => {
+    const id = ++run.current;
     const url = file ? URL.createObjectURL(file) : undefined;
-    setStage({ kind: "reading", source, imageUrl: url });
+    const since = resume?.since ?? Date.now();
+    const scanId = source === "upload" ? (resume?.scanId ?? crypto.randomUUID()) : undefined;
+    setStage({ kind: "reading", source, imageUrl: url, since, backup: !!resume?.provider });
     try {
+      // A resumed read sends no photo: the server reads the one it kept.
       const photo = file ? await shrinkPhoto(file).catch(() => file) : undefined;
-      const scan = await api.extractKhata({ source, photo, lines });
+      if (scanId) remember({ scanId, since, provider: resume?.provider });
+      const scan = await untilAnswered(
+        (provider) => api.extractKhata({ source, photo, scanId, lines, provider }),
+        (provider) => {
+          if (scanId) remember({ scanId, since, provider });
+          if (run.current === id) setStage((s) => (s.kind === "reading" ? { ...s, backup: true } : s));
+        },
+        resume?.provider,
+      );
+      if (run.current !== id) return;
+      remember(null);
       setStage({ kind: "review", source, imageUrl: url, scan });
     } catch (err) {
+      // A reload cancels the request too, before the page goes. Waiting a moment means a page that is
+      // going never gets here, so the read stays remembered for the reloaded one.
+      await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      if (run.current !== id) return;
+      remember(null);
       toast.error(err instanceof Error ? err.message : String(err));
       setStage({ kind: "start" });
     }
   };
+
+  const cancel = () => {
+    run.current++;
+    remember(null);
+    setStage({ kind: "start" });
+  };
+
+  // After a reload in the middle of reading a photo, carry on with it.
+  useEffect(() => {
+    const pending = recall();
+    if (!pending) return;
+    const id = window.setTimeout(() => void read("upload", undefined, undefined, pending), 0);
+    return () => window.clearTimeout(id);
+    // Once, on opening the screen.
+  }, []);
 
   // Phones open their camera from the file picker; laptops and tablets get the camera in a dialog.
   const takePhoto = () => {
@@ -151,14 +218,14 @@ export function KhataScreen() {
 
       {stage.kind === "reading" ? (
         <div className="grid gap-6 lg:grid-cols-2">
-          <PagePreview imageUrl={stage.imageUrl} scanning />
+          <PagePreview imageUrl={stage.imageUrl} sample={stage.source === "sample"} scanning />
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Loader2 className="size-5 animate-spin text-primary" /> {t.reading.title}
+              <CardTitle className="text-lg">
+                <AiProgress label={t.reading.title} since={stage.since} backup={stage.backup} slowAfter={30} usual={stage.source === "upload"} />
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-5">
               <ol className="space-y-3">
                 {t.reading.steps.map((s, i) => (
                   <li key={s} className="flex items-center gap-3 text-sm animate-in fade-in-0 fill-mode-both" style={{ animationDelay: `${i * 600}ms` }}>
@@ -166,6 +233,9 @@ export function KhataScreen() {
                   </li>
                 ))}
               </ol>
+              <Button variant="outline" onClick={cancel}>
+                {common.actions.cancel}
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -207,8 +277,17 @@ export function KhataScreen() {
   );
 }
 
-function PagePreview({ imageUrl, scanning = false }: { imageUrl?: string; scanning?: boolean }) {
-  if (!imageUrl) return <SampleKhataPage scanning={scanning} />;
+/** The page being read: the shopkeeper's photo, the sample page, or (after a reload, when the photo is only on the server) a placeholder. */
+function PagePreview({ imageUrl, sample = false, scanning = false }: { imageUrl?: string; sample?: boolean; scanning?: boolean }) {
+  if (sample) return <SampleKhataPage scanning={scanning} />;
+  if (!imageUrl) {
+    return (
+      <div className="relative grid min-h-64 place-items-center overflow-hidden rounded-lg border bg-muted/40">
+        <FileImage className="size-12 text-muted-foreground" aria-hidden />
+        {scanning ? <div className="pointer-events-none absolute inset-x-0 top-0 h-16 animate-[scan_1.6s_ease-in-out_infinite] bg-gradient-to-b from-transparent via-primary/25 to-transparent" /> : null}
+      </div>
+    );
+  }
   return (
     <div className="relative overflow-hidden rounded-lg border">
       {/* A local object URL from the user's own photo; next/image can't optimise it. */}
@@ -231,8 +310,8 @@ function Review({
   onSaved: (r: KhataSaveResult & { withoutPhone: number }) => void;
 }) {
   const t = useT().khata.review;
-  // Typed and spreadsheet lines have no page to show beside them.
-  const typed = scan.source === "manual" || scan.source === "file";
+  // Typed and spreadsheet lines have no page to show beside them, nor does a photo read after a reload.
+  const typed = scan.source === "manual" || scan.source === "file" || (scan.source === "upload" && !imageUrl);
   const customers = useCustomers();
   const save = useApiMutation(api.saveKhata);
   const [rows, setRows] = useState<KhataRow[]>(scan.rows);
@@ -250,14 +329,14 @@ function Review({
     for (const r of fresh) if (r.phone && !normalizeIndianMobile(r.phone)) errors[r.id] = true;
     setPhoneErrors(errors);
     if (Object.keys(errors).length) return toast.error(t.invalidPhone);
-    const saved = await attempt(save.mutateAsync({ scanId: scan.scanId, source: scan.source, rows }));
+    const saved = await attempt(save.mutateAsync({ scanId: scan.scanId, source: scan.source, rows, model: scan.model }));
     if (!saved) return;
     onSaved({ ...saved.value, withoutPhone: fresh.filter((r) => !r.phone).length });
   };
 
   return (
     <div className={cn("grid gap-6", typed ? "" : "xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]")}>
-      {typed ? null : <PagePreview imageUrl={imageUrl} />}
+      {typed ? null : <PagePreview imageUrl={imageUrl} sample={scan.source === "sample"} />}
       <Card>
         <CardHeader>
           <CardTitle>{t.title}</CardTitle>

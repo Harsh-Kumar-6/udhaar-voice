@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createSeed } from "@/lib/demo/seed";
 import type { ScheduleInput } from "@/lib/api/contract";
 import type { ShopData } from "./data";
-import { runTool, TOOLS } from "./ask";
+import { fakeProvider } from "./fake-provider";
+import { ask, runTool, TOOLS } from "./ask";
 
 const NOW = new Date("2026-10-21T11:00:00");
 const fresh = (): ShopData => ({ ...createSeed(NOW), imports: [], lines: { lines: 2, onLine: [], waiting: [] } });
@@ -59,5 +60,30 @@ describe("assistant tools", () => {
     });
     expect(new Date(input!.at).getHours()).toBe(10);
     expect(input!.customerIds).toEqual(["c01"]);
+  });
+});
+
+describe("asking through the providers", () => {
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const answering = fakeProvider("meta", {
+    answerWithTools: async (_q, _tools, run) => {
+      await run("get_summary", {});
+      return { answer: "₹9,560 is pending.", calls: [{ name: "get_summary", args: {} }] };
+    },
+  });
+
+  it("hands over to Meta when Gemini fails, and Meta answers with the tools", async () => {
+    const providers = [fakeProvider("gemini"), answering];
+    expect(await ask(fresh(), "how much is pending?", NOW, noSchedule, undefined, providers)).toEqual({ next: "meta" });
+    const step = await ask(fresh(), "how much is pending?", NOW, noSchedule, "meta", providers);
+    expect(step).toMatchObject({ result: { answer: "₹9,560 is pending.", tool: "get_summary()" } });
+  });
+
+  it("falls back to keywords when every provider fails, or none is set up", async () => {
+    const failed = await ask(fresh(), "how much is pending in total?", NOW, noSchedule, "meta", [fakeProvider("gemini"), fakeProvider("meta")]);
+    expect(failed).toMatchObject({ result: { question: "how much is pending in total?" } });
+    const none = await ask(fresh(), "how much is pending in total?", NOW, noSchedule, undefined, []);
+    expect("result" in none).toBe(true);
   });
 });

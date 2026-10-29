@@ -64,8 +64,8 @@ bolna/
 |---|---|
 | Accounts and data | Supabase Auth (phone or email with a password; a new account confirms its email with a code); every shop's data in Postgres, private to its owner by row-level security |
 | Calls | Bolna reminder and evening summary agents in English, Hindi, Odia, Bengali and Marathi; results written into promises, disputes, notes and opt-outs |
-| Khata photos | Gemini reads each page into rows with a confidence per field and crossed-out amounts; the photo is kept in private storage |
-| Ask your khata | Gemini answers by calling tools on the shop's data, in the language asked; voice questions are transcribed by Gemini. Without a Gemini key, keyword answers |
+| Khata photos | Gemini reads each page into rows with a confidence per field and crossed-out amounts, with Meta's Muse Spark when Gemini fails; the photo is kept in private storage |
+| Ask your khata | Gemini (or Muse Spark, when Gemini fails) answers by calling tools on the shop's data, in the language asked; voice questions are transcribed the same way. Without either key, or when both fail, keyword answers |
 | `/try` | A real Bolna call when `TRY_REAL_CALLS` is on (a Bolna trial only reaches verified numbers), otherwise a scripted conversation |
 
 ## Calls
@@ -90,7 +90,8 @@ bolna/
 ## Reading and understanding
 
 - **Typed entries and spreadsheets** (`lib/khata-file.ts`): CSV and Excel files are read in the browser; columns are found by their header in English, Hindi or Bengali, or taken in the order name, amount, items, date, phone. They go through the same review as a photo.
-- **Khata photos** (`lib/server/gemini.ts`, `khata.ts`): the photo is shrunk in the browser, stored in `khata-photos/{shop}/{scan}.jpg`, and read by Gemini against a JSON schema. Rows are then matched to customers and saved entries exactly like the sample page.
+- **Khata photos** (`lib/server/ai.ts`, `khata.ts`): the photo is shrunk in the browser, stored in `khata-photos/{shop}/{scan}.jpg`, and read by Gemini (or Muse Spark) against a JSON schema. Rows are then matched to customers and saved entries exactly like the sample page.
 - **Ask** (`lib/server/ask.ts`): Gemini gets tools over the shop's data (summary, a customer, promises by range, top dues, disputes, missed promises, collections, product requests, scheduling a call) and answers in the question's language. The keyword assistant answers when Gemini isn't set up or fails.
 - **Voice questions:** Gemini transcribes the recording in its own script before it is asked.
-- **Models and limits:** `GEMINI_MODEL` (default `gemini-3.8-flash`) with `GEMINI_FALLBACK_MODEL` (default `gemini-3.6-flash`) when it is busy. Each call has a time budget and no hidden retries, so a request finishes well inside 60 s; Ask gives up after about 40 s and answers by keywords. The free tier allows only 20 requests per model a day, so real use needs billing on the Gemini key.
+- **Fallback to Meta** (`lib/server/meta.ts`, `META_API_KEY`): when Gemini fails, the browser asks again with Meta's Muse Spark (`META_MODEL`, default `muse-spark-1.3`; recordings are sent to it as WAV; `META_AUDIO_MODEL` can give spoken questions another model). Each try is its own request. While a model works, the screen shows a running clock, says when a second model has taken over, offers Cancel, and asks before the page is left; a photo being read carries on after a reload. `AI_TEST_FAIL=gemini` in `.env.local` makes Gemini fail on purpose, to try the fallback locally.
+- **Models and limits:** `GEMINI_MODEL` (default `gemini-3.8-flash`), with `GEMINI_FALLBACK_MODEL` (default `gemini-3.6-flash`) when it is busy and Meta isn't set up. Each call has a time budget and no hidden retries, so a request finishes well inside 60 s; Ask gives up after about 40 s and answers by keywords. The free tier allows only 20 requests per model a day, so real use needs billing on the Gemini key.

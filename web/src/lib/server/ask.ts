@@ -1,24 +1,24 @@
 import { addDays, format } from "date-fns";
-import type { FunctionDeclaration } from "@google/genai";
 import { formatINR, isPromiseBroken, toDateKey } from "@/lib/domain/rules";
-import type { AskAnswer, ScheduleInput, ScheduleResult } from "@/lib/api/contract";
+import type { AiProvider, AiStep, AskAnswer, ScheduleInput, ScheduleResult } from "@/lib/api/contract";
 import { answerQuestion } from "./assistant";
 import type { ShopData } from "./data";
-import { answerWithTools, geminiConfigured } from "./gemini";
+import { step, type Provider, type ToolSpec } from "./ai";
+import { PROVIDERS } from "./providers";
 import { candidates, customerSummary, findCustomerByName, fmtDay, summaries } from "./queries";
 
 /**
- * "Ask your khata": Gemini answers by calling these tools on the shop's data. Without a Gemini key,
- * or if Gemini fails, the keyword assistant answers instead.
+ * "Ask your khata": the model answers by calling these tools on the shop's data. Without a model
+ * set up, or when every provider has failed, the keyword assistant answers instead.
  */
 
 type Item = NonNullable<AskAnswer["items"]>[number];
-/** What a tool hands back to Gemini, plus what the app shows under the answer. */
+/** What a tool hands back to the model, plus what the app shows under the answer. */
 type ToolResult = { data: unknown; items?: Item[]; action?: AskAnswer["action"] };
 
 const link = (id: string) => `/app/customers/${id}`;
 
-export const TOOLS: FunctionDeclaration[] = [
+export const TOOLS: ToolSpec[] = [
   { name: "get_summary", description: "Totals for the whole shop: pending dues, customers owing, collected today and this week, promised this week, open disputes." },
   {
     name: "find_customer",
@@ -192,24 +192,34 @@ const describeCall = (c: { name: string; args: Record<string, unknown> }) =>
     .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
     .join(", ")})`;
 
-export async function ask(db: ShopData, question: string, now: Date, schedule: (input: ScheduleInput) => Promise<ScheduleResult>): Promise<AskAnswer> {
-  if (!geminiConfigured()) return answerQuestion(db, question, now, schedule);
+export async function ask(
+  db: ShopData,
+  question: string,
+  now: Date,
+  schedule: (input: ScheduleInput) => Promise<ScheduleResult>,
+  provider?: AiProvider,
+  providers: Provider[] = PROVIDERS,
+): Promise<AiStep<AskAnswer>> {
+  if (!providers.some((p) => p.configured())) return { result: await answerQuestion(db, question, now, schedule) };
   let shown: Omit<ToolResult, "data"> = {};
   try {
-    const { answer, calls } = await answerWithTools(
-      question,
-      TOOLS,
-      async (name, args) => {
-        const result = await runTool(db, now, name, args, schedule);
-        if (result.items || result.action) shown = { items: result.items, action: result.action };
-        return result.data;
-      },
-      instruction(db, now),
-    );
-    if (!answer) throw new Error("No answer");
-    return { question, answer, tool: calls.length ? calls.map(describeCall).join(" → ") : "none", items: shown.items, action: shown.action };
+    return await step(providers, provider, "ask", async (p) => {
+      shown = {};
+      const { answer, calls } = await p.answerWithTools(
+        question,
+        TOOLS,
+        async (name, args) => {
+          const result = await runTool(db, now, name, args, schedule);
+          if (result.items || result.action) shown = { items: result.items, action: result.action };
+          return result.data;
+        },
+        instruction(db, now),
+      );
+      if (!answer) throw new Error("No answer");
+      return { question, answer, tool: calls.length ? calls.map(describeCall).join(" → ") : "none", items: shown.items, action: shown.action };
+    });
   } catch (err) {
     console.error("[ask]", err instanceof Error ? err.message : err);
-    return answerQuestion(db, question, now, schedule);
+    return { result: await answerQuestion(db, question, now, schedule) };
   }
 }

@@ -1,11 +1,11 @@
 export const ask = {
   title: "Ask your khata",
-  description: "Ask in Bengali, Hindi or English: type, tap a question, or tap the mic and speak.",
+  description: "Ask in English, Hindi, Odia, Bengali or Marathi: type, tap a question, or tap the mic and speak.",
   placeholder: "Ask anything, e.g. Who will pay this week?",
   send: "Ask",
   voice: "Speak",
   voiceStop: "Stop and ask",
-  voiceNote: "Tap, speak, tap again. Ask in Bengali, Hindi or English.",
+  voiceNote: "Tap, speak, tap again. Ask in English, Hindi, Odia, Bengali or Marathi.",
   listening: (elapsed: string) => `Listening… ${elapsed}`,
   listeningHint: (max: number) => `Tap stop when you're done (up to ${max} seconds).`,
   transcribing: "Turning your voice into text…",
