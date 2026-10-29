@@ -30,6 +30,8 @@ const AGENT_SETTINGS = [
  * Each call starts in the customer's own language, so the agent switches only when the customer asks:
  * auto-detection switched on one mis-heard word in testing, and announced it in English.
  * The agent also ends the call itself after goodbye, instead of asking "are you still there?".
+ * Bolna's own call-backs are off: the app schedules every call, so opt-outs, calling hours and the
+ * reminder gap apply. In testing, a call-back Bolna booked itself rang a customer who had opted out.
  */
 async function setLanguagePrompts(agentId: string, prompt: string): Promise<string[]> {
   const agent = await getAgent(agentId);
@@ -42,6 +44,7 @@ async function setLanguagePrompts(agentId: string, prompt: string): Promise<stri
     lang.handoff_message = null;
   }
   const taskConfig = agent.tasks[0].task_config ?? {};
+  taskConfig.auto_reschedule = false;
   taskConfig.hangup_after_LLMCall = true;
   taskConfig.call_cancellation_prompt = HANGUP_RULE;
   taskConfig.call_hangup_message = CALL_LINES.hangup;

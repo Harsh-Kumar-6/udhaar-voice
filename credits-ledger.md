@@ -15,7 +15,8 @@ Rate observed: $0.06/min (bundled models, Bolna shared number). Own provider key
 | 2026-10-28 | Test call 4: Tapas (Hindi), wrong number | 0.5 | -$0.03 | $4.25 |
 | 2026-10-28 | Test call 5: Deepak (Hindi), asked not to be called again | 0.9 | -$0.06 | $4.19 |
 | 2026-10-28 | Test call 6: evening summary (Bengali); greeting only, summary not read (fixed) | 0.3 | -$0.03 | $4.16 |
-| 2026-10-28 | Test call 7: evening summary (Bengali), read in full, question answered | 0.9 | -$0.06 | **$4.10** (~68 min) |
+| 2026-10-28 | Test call 7: evening summary (Bengali), read in full, question answered | 0.9 | -$0.06 | $4.10 |
+| 2026-10-29 | Unplanned: Bolna's own auto-reschedule called Deepak back at 6 PM (from test call 3); no answer | 0.3 | -$0.03 | **$4.07** (~68 min) |
 
 ## Planned: first real calls (call pipeline, 28 Oct)
 
